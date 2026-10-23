@@ -1,0 +1,11 @@
+Pillow
+PyMuPDF
+openpyxl
+python-docx
+xlrd
+pyxlsb
+ezdxf
+pypdf
+numpy
+lxml
+PyInstaller

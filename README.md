@@ -51,6 +51,7 @@
 - إضافة هاشتاجات للملفات وتخصصات للمجلدات، وحفظ المفضلة.
 - الوصول إلى الملفات التي فُتحت مؤخرًا والملفات التي أضيفت حديثًا وسجل نشاط البرنامج.
 - تثبيت اختياري لكلمة مرور لفتح البرنامج. كلمة المرور لا تشفر ملفات المشروع.
+- التحقق من وجود تحديث منشور على GitHub عند بدء التشغيل، مع خيار تنزيله فورًا أو تجهيزه للتثبيت في المرة القادمة أو تأجيل التنبيه ليوم.
 
 <a id="download-ar"></a>
 ## التنزيل والتشغيل
@@ -63,7 +64,9 @@
 
 ### للمطورين
 
-يتوفر الكود المصدري المقسّم ونسخة كاملة مدمجة في [`source/v0.38`](source/v0.38). تعليمات البناء ومتطلباته موجودة في مجلد النسخة. المشروع مبني بـPython 3.11 وTkinter؛ راجع ملفات المصدر والتراخيص المرفقة قبل إعادة التوزيع.
+يتوفر الكود المصدري المقسّم ونسخة كاملة مدمجة في [`source/v0.39`](source/v0.39). تعليمات البناء ومتطلباته موجودة في مجلد النسخة. المشروع مبني بـPython 3.11 وTkinter؛ راجع ملفات المصدر والتراخيص المرفقة قبل إعادة التوزيع.
+
+> **ملاحظة التحديث:** يتضمن Rasd v0.39 فحص الإصدارات وتطبيق التحديثات. الانتقال الأول من v0.38 إلى v0.39 يحتاج تشغيل مثبت v0.39 يدويًا؛ الإصدارات التالية يمكن تحديثها من داخل البرنامج.
 
 <a id="screenshots-ar"></a>
 ## صور من البرنامج
@@ -102,20 +105,26 @@
 <a id="roadmap-ar"></a>
 ## ما القادم؟
 
-دي أفكار للتطوير في الإصدارات القادمة، ومش كلها متاحة حاليًا:
+دي خريطة تطوير Rasd الحالية. علامة **تمام** معناها إن الميزة موجودة في الإصدار الموضح؛ والشرطة معناها إنها لسه ضمن الأفكار القادمة.
 
-1. معاينة الفيديوهات بصيغ مختلفة.
-2. تكبير وتصغير وتحريك المعاينة بسلاسة.
-3. نظام ذكي لربط ملفات المشروع: ربط رسومات CAD بملفات أخرى، وإظهار الملفات المرتبطة من قائمة الزر الأيمن، مع حفظ أكثر من ارتباط لكل ملف داخل Rasd.
-4. قائمة مهام داخل البرنامج لتسجيل الأعمال المطلوب إنجازها.
-5. مساحة تخطيط تضم تقويمًا للمهام والمواعيد والأنشطة.
-6. حفظ اختصارات لمواقع الويب المهمة للشغل.
-7. اختصارات لفتح البرامج المستخدمة في الشغل.
-8. التحقق من توفر إصدار جديد وإظهار إشعار داخل البرنامج، مع آلية واضحة لتنزيل التحديث وتثبيته.
-9. أدوات داخل Rasd لتنظيم ملفات ومجلدات المشروع ونقلها من الواجهة، من غير الحاجة لتنظيمها خارج البرنامج.
-10. تحسين الواجهة وتجربة الاستخدام باستمرار.
+| # | الميزة | الحالة | الإصدار |
+|---|---|---|---|
+| 1 | معاينة الفيديوهات بصيغ مختلفة | — | — |
+| 2 | تكبير وتصغير وتحريك واجهة المعاينة بسلاسة | — | — |
+| 3 | ربط ملفات المشروع ببعض، وإظهار الملفات المرتبطة من قائمة الزر الأيمن مع حفظ الروابط داخل Rasd | — | — |
+| 4 | قائمة مهام To-do داخل البرنامج | — | — |
+| 5 | تقويم للمهام والمواعيد والفعاليات | — | — |
+| 6 | حفظ اختصارات لمواقع مهمة للشغل | — | — |
+| 7 | اختصارات لبرامج الشغل | — | — |
+| 8 | تحسين الواجهة وتجربة الاستخدام باستمرار | — | — |
+| 9 | التحقق من تحديثات GitHub والتنزيل والتثبيت من داخل Rasd، مع تأجيل التنبيه أو تجهيز التحديث للتشغيل القادم | تمام | v0.39 |
+| 10 | إدارة وتنظيم مجلد `Log` من داخل البرنامج، مع تصدير مشروع كامل أو ملفات ومجلدات مختارة | — | — |
+| 11 | شاشة تعريف تفاعلية تظهر عند أول تشغيل بعد التثبيت | — | — |
+| Bonus | إضافة أوامر CAD كأدوات اختيارية داخل Rasd | — | — |
 
-<a id="about-author-ar"></a>
+### التحديث ببساطة
+
+يفحص Rasd صفحة الإصدارات على GitHub عند بدء التشغيل. لو فيه إصدار أحدث، تقدر تأجل التنبيه ليوم، أو تنزّل التحديث وتثبته فورًا، أو تخليه جاهزًا ليتثبت عند تشغيل البرنامج المرة القادمة. Rasd يتحقق من سلامة ملف التثبيت قبل تشغيله، ويغلق نفسه وقت التثبيت ثم يفتح من جديد. ملفات المشاريع داخل `Log` تظل محفوظة. الاتصال بالإنترنت مطلوب للفحص والتنزيل فقط. لا يحتاج المستخدم ملف BAT أو أوامر يدوية؛ التحديث مدمج في البرنامج.<a id="about-author-ar"></a>
 ## كلمة من المطور
 
 أنا عمرو هشام محمود، مهندس مكتب فني في مجال الري والصرف الزراعي واللاندسكيب. أنا مش مبرمج؛ استخدمت أدوات الذكاء الاصطناعي في إنشاء Rasd، وكان دوري طرح الأفكار وتوجيه الأدوات للوصول لبرنامج يساعدني في شغلي. كنت أتمنى أدرس حاسبات ومعلومات، لكن الظروف ما سمحتش وقتها. بإذن الله هسعى أتعلم البرمجة لما ألاقي الوقت المناسب، وهكمل تطوير أدوات تساعدني وتساعد زملائي.
@@ -138,6 +147,7 @@
 - Preview images, PDFs, Excel workbooks, DOCX, and text files, plus DXF drawings. DWG preview depends on suitable previews or AutoCAD tools being available on the computer.
 - Add file hashtags and folder specialties, and save favorites.
 - Revisit recently opened files, recently added files, and activity recorded by the application.
+- Check GitHub Releases for updates at startup, then download now, prepare an update for the next launch, or snooze the reminder for one day.
 - Optional password prompt when opening the app. It does not encrypt project files.
 
 <a id="download-en"></a>
@@ -151,7 +161,9 @@ Download an installer from the [Releases page](https://github.com/engamrhesham20
 
 ### For developers
 
-The split source modules and the merged single-file source are in [`source/v0.38`](source/v0.38). Build instructions and requirements are included there. Rasd uses Python 3.11 and Tkinter; review the source and accompanying third-party licenses before redistribution.
+The split source modules and the merged single-file source are in [`source/v0.39`](source/v0.39). Build instructions and requirements are included there. Rasd uses Python 3.11 and Tkinter; review the source and accompanying third-party licenses before redistribution.
+
+> **Update note:** Rasd v0.39 adds release checks and in-app updates. The first move from v0.38 to v0.39 requires manually running the v0.39 installer; later versions can update from within the app.
 
 <a id="screenshots-en"></a>
 ## Screenshots
@@ -174,20 +186,26 @@ Rasd is licensed under **AGPL-3.0**; see [`LICENSE`](LICENSE). See [`THIRD_PARTY
 <a id="roadmap-en"></a>
 ## What’s coming?
 
-These are ideas for future versions; they are not all available yet:
+This is Rasd’s current development roadmap. **Done** means the feature is included in the listed version; a dash means it remains planned.
 
-1. Preview videos in multiple formats.
-2. Smooth zooming and panning in file previews.
-3. Smart file linking: associate CAD drawings with other project files, view linked files from the right-click menu, and save multiple links per file in Rasd.
-4. An in-app to-do list for tracking work that needs to be done.
-5. A planning space with a calendar for tasks, appointments, and activities.
-6. Saved shortcuts to important work websites.
-7. Shortcuts for opening applications used at work.
-8. Check for new versions and show an in-app update notice, with a clear way to download and install updates.
-9. In-app tools for organizing and moving project files and folders without leaving Rasd.
-10. Ongoing improvements to the interface and user experience.
+| # | Feature | Status | Version |
+|---|---|---|---|
+| 1 | Preview videos in multiple formats | — | — |
+| 2 | Smooth zooming and panning in the preview pane | — | — |
+| 3 | Link project files, open linked items from the right-click menu, and save those links in Rasd | — | — |
+| 4 | An in-app to-do list | — | — |
+| 5 | A calendar for tasks, appointments, and events | — | — |
+| 6 | Saved shortcuts to important work websites | — | — |
+| 7 | Shortcuts for work applications | — | — |
+| 8 | Ongoing interface and usability improvements | — | — |
+| 9 | Check GitHub for updates, download and install from Rasd, snooze the notice, or prepare an update for the next launch | Done | v0.39 |
+| 10 | Manage and organize the `Log` folder in Rasd, including exporting a whole project or selected files and folders | — | — |
+| 11 | An interactive first-run tutorial after installation | — | — |
+| Bonus | Add optional CAD commands as tools inside Rasd | — | — |
 
-<a id="about-author-en"></a>
+### Updates in plain language
+
+Rasd checks its GitHub Releases page when it starts. If a newer version is available, you can snooze the reminder for a day, download and install now, or download now and install the next time Rasd starts. Rasd verifies the installer before running it, closes during installation, and then opens again. Project files in `Log` are preserved. Internet access is needed only to check for and download updates. Users do not need a BAT file or manual commands; updating is built into Rasd.<a id="about-author-en"></a>
 ## About the developer
 
 I’m Amr Hesham Mahmoud, a technical-office engineer working in agricultural irrigation, drainage, and landscaping. I’m not a programmer; I used AI tools to build Rasd. My part was to bring the ideas and guide those tools toward something useful for my work. I had hoped to study computer science, but circumstances did not allow it at the time. I hope to learn programming in the future and keep building tools that help me and my colleagues.
@@ -197,4 +215,3 @@ I don’t claim credit for writing the code; AI handled the coding and implement
 ---
 
 **Rasd · Made by ENG. Amr Hesham**
-

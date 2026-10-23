@@ -20,3 +20,6 @@ Desktop.ini
 
 # Draft release uploads (attach to GitHub Release, not the repository)
 release-assets/
+
+# Local executable used only to assemble release installers
+source/**/Rasd.exe

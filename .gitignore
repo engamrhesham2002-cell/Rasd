@@ -1,0 +1,22 @@
+# User/project data
+Log/
+**/Log/
+*.db
+*.sqlite
+*.sqlite3
+
+# Python generated files
+__pycache__/
+*.py[cod]
+
+# Build outputs
+build/
+dist/
+*.spec.bak
+
+# Windows noise
+Thumbs.db
+Desktop.ini
+
+# Draft release uploads (attach to GitHub Release, not the repository)
+release-assets/

@@ -120,7 +120,7 @@
 
 أنا عمرو هشام محمود، مهندس مكتب فني في مجال الري والصرف الزراعي واللاندسكيب. أنا مش مبرمج؛ استخدمت أدوات الذكاء الاصطناعي في إنشاء Rasd، وكان دوري طرح الأفكار وتوجيه الأدوات للوصول لبرنامج يساعدني في شغلي. كنت أتمنى أدرس حاسبات ومعلومات، لكن الظروف ما سمحتش وقتها. بإذن الله هسعى أتعلم البرمجة لما ألاقي الوقت المناسب، وهكمل تطوير أدوات تساعدني وتساعد زملائي.
 
-ما بنسبش لنفسي فضل كتابة الكود، وبشكر مطوري **Everything** على محرك البحث الممتاز اللي ألهمني وأستخدمه داخل Rasd للبحث في ملفات المشروع. هدفي إني أطور البرنامج مع الوقت وأشاركه مع الآخرين.
+ما بنسبش لنفسي فضل كتابة الكود؛ الذكاء الاصطناعي تولّى كتابة الكود وتنفيذ البرنامج بالكامل. أنا كنت صاحب الأفكار، ووجّهت أدوات الذكاء الاصطناعي خطوة بخطوة لحد ما نفّذت الفكرة اللي كانت في دماغي. وبشكر مطوري **Everything** على محرك البحث الممتاز اللي ألهمني وأستخدمه داخل Rasd للبحث في ملفات المشروع. هدفي إني أطور البرنامج مع الوقت وأشاركه مع الآخرين.
 
 <a id="overview-en"></a>
 ## About Rasd
@@ -192,7 +192,7 @@ These are ideas for future versions; they are not all available yet:
 
 I’m Amr Hesham Mahmoud, a technical-office engineer working in agricultural irrigation, drainage, and landscaping. I’m not a programmer; I used AI tools to build Rasd. My part was to bring the ideas and guide those tools toward something useful for my work. I had hoped to study computer science, but circumstances did not allow it at the time. I hope to learn programming in the future and keep building tools that help me and my colleagues.
 
-I don’t claim credit for writing the code. I’m grateful to the developers of **Everything** for their excellent search engine, which inspired me and is used by Rasd to search within a project. I hope to keep improving the application and sharing it with others.
+I don’t claim credit for writing the code; AI handled the coding and implementation of the application. I brought the ideas and guided the AI step by step to build what I had in mind. I’m grateful to the developers of **Everything** for their excellent search engine, which inspired me and is used by Rasd to search within a project. I hope to keep improving the application and sharing it with others.
 
 ---
 

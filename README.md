@@ -105,13 +105,15 @@
 دي أفكار للتطوير في الإصدارات القادمة، ومش كلها متاحة حاليًا:
 
 1. معاينة الفيديوهات بصيغ مختلفة.
-2. تحسين تكبير وتصغير المعاينة وتحريكها بسلاسة.
-3. نظام مرن لربط ملفات المشروع ببعضها وإدارة الملفات المرتبطة بلوحة CAD.
-4. قائمة مهام داخل البرنامج.
-5. تقويم للمهام والمواعيد.
-6. اختصارات لمواقع العمل المهمة.
-7. اختصارات للبرامج المستخدمة في العمل.
-8. تحسين شكل الواجهة وتجربة الاستخدام.
+2. تكبير وتصغير وتحريك المعاينة بسلاسة.
+3. نظام ذكي لربط ملفات المشروع: ربط رسومات CAD بملفات أخرى، وإظهار الملفات المرتبطة من قائمة الزر الأيمن، مع حفظ أكثر من ارتباط لكل ملف داخل Rasd.
+4. قائمة مهام داخل البرنامج لتسجيل الأعمال المطلوب إنجازها.
+5. مساحة تخطيط تضم تقويمًا للمهام والمواعيد والأنشطة.
+6. حفظ اختصارات لمواقع الويب المهمة للشغل.
+7. اختصارات لفتح البرامج المستخدمة في الشغل.
+8. التحقق من توفر إصدار جديد وإظهار إشعار داخل البرنامج، مع آلية واضحة لتنزيل التحديث وتثبيته.
+9. أدوات داخل Rasd لتنظيم ملفات ومجلدات المشروع ونقلها من الواجهة، من غير الحاجة لتنظيمها خارج البرنامج.
+10. تحسين الواجهة وتجربة الاستخدام باستمرار.
 
 <a id="about-author-ar"></a>
 ## كلمة من المطور
@@ -174,14 +176,16 @@ Rasd is licensed under **AGPL-3.0**; see [`LICENSE`](LICENSE). See [`THIRD_PARTY
 
 These are ideas for future versions; they are not all available yet:
 
-1. Preview videos in different formats.
-2. Smoother preview zoom and panning.
-3. A flexible way to link project files and manage files associated with CAD drawings.
-4. An in-app to-do list.
-5. A calendar for tasks and appointments.
-6. Shortcuts to important work websites.
-7. Shortcuts to work applications.
-8. Continued improvements to the interface and user experience.
+1. Preview videos in multiple formats.
+2. Smooth zooming and panning in file previews.
+3. Smart file linking: associate CAD drawings with other project files, view linked files from the right-click menu, and save multiple links per file in Rasd.
+4. An in-app to-do list for tracking work that needs to be done.
+5. A planning space with a calendar for tasks, appointments, and activities.
+6. Saved shortcuts to important work websites.
+7. Shortcuts for opening applications used at work.
+8. Check for new versions and show an in-app update notice, with a clear way to download and install updates.
+9. In-app tools for organizing and moving project files and folders without leaving Rasd.
+10. Ongoing improvements to the interface and user experience.
 
 <a id="about-author-en"></a>
 ## About the developer

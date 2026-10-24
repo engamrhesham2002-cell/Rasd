@@ -4,10 +4,6 @@
   <p>مدير ملفات المشروعات الهندسية وأعمال المكتب الفني</p>
   <p>
     <a href="https://github.com/engamrhesham2002-cell/Rasd/releases"><strong>⬇ Download Rasd from Releases</strong></a>
-    &nbsp;·&nbsp;
-    <a href="#overview-ar">العربية</a>
-    &nbsp;·&nbsp;
-    <a href="#overview-en">English</a>
   </p>
   <p><a href="https://www.gnu.org/licenses/agpl-3.0.html"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg" /></a></p>
   <p><em>Made by ENG. Amr Hesham · صنعه م. عمرو هشام</em></p>
@@ -20,7 +16,6 @@
 - [نبذة عن Rasd](#overview-ar)
 - [مميزات البرنامج](#features-ar)
 - [التنزيل والتشغيل](#download-ar)
-- [صور من البرنامج](#screenshots-ar)
 - [ملاحظات وحدود المعاينة](#notes-ar)
 - [الترخيص](#license-ar)
 - [ما القادم؟](#roadmap-ar)
@@ -67,26 +62,8 @@
 
 > **ملاحظة التحديث:** يتضمن Rasd v0.39 فحص الإصدارات وتطبيق التحديثات. الانتقال الأول من v0.38 إلى v0.39 يحتاج تشغيل مثبت v0.39 يدويًا؛ الإصدارات التالية يمكن تحديثها من داخل البرنامج.
 
-<a id="screenshots-ar"></a>
-## صور من البرنامج
 
-<div align="center">
-  <img src="assets/screenshots/welcome.png" alt="شاشة البداية" width="48%" />
-  <img src="assets/screenshots/projects-dashboard.png" alt="واجهة المشروعات" width="48%" />
-</div>
-<div align="center">
-  <img src="assets/screenshots/project-browser.png" alt="تصفح ملفات المشروع" width="48%" />
-  <img src="assets/screenshots/search-results.png" alt="نتائج البحث داخل المشروع" width="48%" />
-</div>
-<div align="center">
-  <img src="assets/screenshots/file-preview-pdf.png" alt="معاينة PDF" width="32%" />
-  <img src="assets/screenshots/file-preview-image.png" alt="معاينة صورة" width="32%" />
-  <img src="assets/screenshots/file-preview-cad.png" alt="مثال معاينة CAD" width="32%" />
-</div>
-<div align="center">
-  <img src="assets/screenshots/file-tags.png" alt="إدارة هاشتاجات الملفات" width="48%" />
-  <img src="assets/screenshots/folder-specialties.png" alt="تخصيص المجلدات" width="48%" />
-</div>
+
 
 <a id="notes-ar"></a>
 ## ملاحظات وحدود المعاينة
@@ -129,88 +106,3 @@
 أنا عمرو هشام محمود، مهندس مكتب فني في مجال الري والصرف الزراعي واللاندسكيب. أنا مش مبرمج؛ استخدمت أدوات الذكاء الاصطناعي في إنشاء Rasd، وكان دوري طرح الأفكار وتوجيه الأدوات للوصول لبرنامج يساعدني في شغلي. كنت أتمنى أدرس حاسبات ومعلومات، لكن الظروف ما سمحتش وقتها. بإذن الله هسعى أتعلم البرمجة لما ألاقي الوقت المناسب، وهكمل تطوير أدوات تساعدني وتساعد زملائي.
 
 ما بنسبش لنفسي فضل كتابة الكود؛ الذكاء الاصطناعي تولّى كتابة الكود وتنفيذ البرنامج بالكامل. أنا كنت صاحب الأفكار، ووجّهت أدوات الذكاء الاصطناعي خطوة بخطوة لحد ما نفّذت الفكرة اللي كانت في دماغي. وبشكر مطوري **Everything** على محرك البحث الممتاز اللي ألهمني وأستخدمه داخل Rasd للبحث في ملفات المشروع. هدفي إني أطور البرنامج مع الوقت وأشاركه مع الآخرين.
-
-<a id="overview-en"></a>
-## About Rasd
-
-**Rasd (رَصْد)** is a Windows application for organizing, searching, and previewing engineering and technical-office project files from one place. I built it to make everyday project files easier for me and my colleagues to find.
-
-> **Download:** Visit the [GitHub Releases page](https://github.com/engamrhesham2002-cell/Rasd/releases) and choose the installer that fits your needs. This link remains stable across updates.
-
-<a id="features-en"></a>
-## Features
-
-- Create projects and browse their folders and files in one interface.
-- Search within the open project using the bundled **Everything** engine, with a local fallback if the engine cannot run.
-- Filter files by type and extension, and view file details and project paths.
-- Preview images, PDFs, Excel workbooks, DOCX, and text files, plus DXF drawings. DWG preview depends on suitable previews or AutoCAD tools being available on the computer.
-- Add file hashtags and folder specialties, and save favorites.
-- Revisit recently opened files, recently added files, and activity recorded by the application.
-- Check GitHub Releases for updates at startup, then download now, prepare an update for the next launch, or snooze the reminder for one day.
-- Optional password prompt when opening the app. It does not encrypt project files.
-
-<a id="download-en"></a>
-## Download and run
-
-Download an installer from the [Releases page](https://github.com/engamrhesham2002-cell/Rasd/releases). Both the standard and portable installers bundle Python, the application libraries, and Everything, so users do not need to install Python or download runtime components.
-
-- **Standard installer:** lets you choose an installation folder and creates a `Log` folder beside the app.
-- **Portable installer:** creates a portable folder beside the installer. Close Rasd before moving that complete folder, and keep `Rasd.exe` and `Log` together.
-- Create each project in its own subfolder inside `Log`, which is beside the application. Search is scoped to the open project.
-
-### For developers
-
-The split source modules and the merged single-file source are in [`source/v0.39`](source/v0.39). Build instructions and requirements are included there. Rasd uses Python 3.11 and Tkinter; review the source and accompanying third-party licenses before redistribution.
-
-> **Update note:** Rasd v0.39 adds release checks and in-app updates. The first move from v0.38 to v0.39 requires manually running the v0.39 installer; later versions can update from within the app.
-
-<a id="screenshots-en"></a>
-## Screenshots
-
-The screenshots above show the welcome screen, project dashboard, file browser, project search, and representative previews and organization tools.
-
-<a id="notes-en"></a>
-## Preview notes and limitations
-
-- PDF and Excel previews are for viewing; they do not edit the original file or recalculate Excel formulas.
-- DWG preview is not guaranteed on every computer. It depends on a related PDF/image, a Windows thumbnail, or an available AutoCAD Core Console.
-- Excel data is shown in pages; formula results may be absent when they are not saved in the workbook.
-- Opening files externally depends on applications installed and Windows file associations.
-- Project files remain ordinary files in `Log`; the optional application password does not encrypt them.
-
-<a id="license-en"></a>
-## License
-
-Rasd is licensed under **AGPL-3.0**; see [`LICENSE`](LICENSE). See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for bundled component notices, including Everything and PyMuPDF.
-<a id="roadmap-en"></a>
-## What’s coming?
-
-This is Rasd’s current development roadmap. **Done** means the feature is included in the listed version; a dash means it remains planned.
-
-| # | Feature | Status | Version |
-|---|---|---|---|
-| 1 | Preview videos in multiple formats | — | — |
-| 2 | Smooth zooming and panning in the preview pane | — | — |
-| 3 | Link project files, open linked items from the right-click menu, and save those links in Rasd | — | — |
-| 4 | An in-app to-do list | — | — |
-| 5 | A calendar for tasks, appointments, and events | — | — |
-| 6 | Saved shortcuts to important work websites | — | — |
-| 7 | Shortcuts for work applications | — | — |
-| 8 | Ongoing interface and usability improvements | — | — |
-| 9 | Check GitHub for updates, download and install from Rasd, snooze the notice, or prepare an update for the next launch | Done | v0.39 |
-| 10 | Manage and organize the `Log` folder in Rasd, including exporting a whole project or selected files and folders | — | — |
-| 11 | An interactive first-run tutorial after installation | — | — |
-| Bonus | Add optional CAD commands as tools inside Rasd | — | — |
-
-### Updates in plain language
-
-Rasd checks its GitHub Releases page when it starts. If a newer version is available, you can snooze the reminder for a day, download and install now, or download now and install the next time Rasd starts. Rasd verifies the installer before running it, closes during installation, and then opens again. Project files in `Log` are preserved. Internet access is needed only to check for and download updates. Users do not need a BAT file or manual commands; updating is built into Rasd.<a id="about-author-en"></a>
-## About the developer
-
-I’m Amr Hesham Mahmoud, a technical-office engineer working in agricultural irrigation, drainage, and landscaping. I’m not a programmer; I used AI tools to build Rasd. My part was to bring the ideas and guide those tools toward something useful for my work. I had hoped to study computer science, but circumstances did not allow it at the time. I hope to learn programming in the future and keep building tools that help me and my colleagues.
-
-I don’t claim credit for writing the code; AI handled the coding and implementation of the application. I brought the ideas and guided the AI step by step to build what I had in mind. I’m grateful to the developers of **Everything** for their excellent search engine, which inspired me and is used by Rasd to search within a project. I hope to keep improving the application and sharing it with others.
-
----
-
-**Rasd · Made by ENG. Amr Hesham**

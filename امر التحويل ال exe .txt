@@ -1,0 +1,1 @@
+pyinstaller --noconsole --name "Rasd" --icon="Assets\rasd_logo.ico" --add-data "Assets;Assets" --add-data "Everything;Everything" --collect-all "pymupdf" main.py

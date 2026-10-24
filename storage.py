@@ -2,7 +2,6 @@
 from common import *
 
 def resolve_project_root():
- # جعل مسار Log في AppData للمستخدم لضمان صلاحيات الكتابة دائماً بعد التثبيت
  base_dir = Path(os.environ.get('LOCALAPPDATA', str(BASE))) / 'Rasd'
  root = (base_dir / 'Log').resolve()
  root.mkdir(parents=True, exist_ok=True)
@@ -37,6 +36,14 @@ def connect():
 
 with connect() as c:
  c.executescript('CREATE TABLE IF NOT EXISTS files(path TEXT PRIMARY KEY,project TEXT,rel TEXT,name TEXT,ext TEXT,size INTEGER,mtime REAL,last_open TEXT,indexed TEXT); CREATE TABLE IF NOT EXISTS tags(path TEXT,tag TEXT,PRIMARY KEY(path,tag)); CREATE TABLE IF NOT EXISTS file_tag_catalog(project TEXT,tag TEXT,created TEXT,PRIMARY KEY(project,tag)); CREATE TABLE IF NOT EXISTS folder_tags(project TEXT,path TEXT,tag TEXT,created TEXT,PRIMARY KEY(project,path,tag)); CREATE TABLE IF NOT EXISTS extension_colors(ext TEXT PRIMARY KEY,accent TEXT UNIQUE,soft TEXT); CREATE TABLE IF NOT EXISTS search_history(project TEXT,query TEXT,mode TEXT,searched_at TEXT,PRIMARY KEY(project,query,mode)); CREATE TABLE IF NOT EXISTS saved_searches(project TEXT,query TEXT,mode TEXT,created TEXT,PRIMARY KEY(project,query,mode)); CREATE TABLE IF NOT EXISTS project_search_state(project TEXT PRIMARY KEY,query TEXT,mode TEXT,file_type TEXT); CREATE TABLE IF NOT EXISTS favorites(project TEXT,path TEXT,kind TEXT,created TEXT,PRIMARY KEY(project,path)); CREATE TABLE IF NOT EXISTS project_view_state(project TEXT PRIMARY KEY,current_rel TEXT,mode TEXT,folder_filter TEXT,project_filter TEXT,discipline TEXT,sort_col TEXT,sort_desc INTEGER,column_widths TEXT); CREATE TABLE IF NOT EXISTS file_changes(id INTEGER PRIMARY KEY AUTOINCREMENT,project TEXT,path TEXT,kind TEXT,changed_at TEXT); CREATE INDEX IF NOT EXISTS idx_changes_project ON file_changes(project,changed_at); CREATE TABLE IF NOT EXISTS project_visits(project TEXT PRIMARY KEY,last_visit TEXT); CREATE TABLE IF NOT EXISTS file_open_history(id INTEGER PRIMARY KEY AUTOINCREMENT,project TEXT NOT NULL,path TEXT NOT NULL,opened_at TEXT NOT NULL,UNIQUE(project,path,opened_at)); CREATE INDEX IF NOT EXISTS idx_open_history_project ON file_open_history(project,opened_at); CREATE TABLE IF NOT EXISTS project_scan_state(project TEXT PRIMARY KEY,initial_scan_done INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS activity_log(id INTEGER PRIMARY KEY AUTOINCREMENT,project TEXT NOT NULL,action TEXT NOT NULL,details TEXT NOT NULL,path TEXT,occurred_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_activity_project ON activity_log(project,occurred_at); CREATE TABLE IF NOT EXISTS tasks(id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,description TEXT NOT NULL DEFAULT \'\',project TEXT NOT NULL DEFAULT \'\',due_date TEXT,start_time TEXT,end_time TEXT,priority INTEGER NOT NULL DEFAULT 2,tags TEXT NOT NULL DEFAULT \'\',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,completed_at TEXT,attachments TEXT NOT NULL DEFAULT \'[]\',document_rel TEXT); CREATE INDEX IF NOT EXISTS idx_tasks_project_due ON tasks(project,due_date,completed_at); CREATE INDEX IF NOT EXISTS idx_tasks_completed ON tasks(completed_at,updated_at); CREATE TABLE IF NOT EXISTS workspace_tools(id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, title TEXT NOT NULL, kind TEXT NOT NULL, path TEXT NOT NULL);')
+ 
+ # التريجر السحري لمنع مجلد المهام من الظهور في الأكسبلورر للأبد
+ c.executescript('''
+ CREATE TRIGGER IF NOT EXISTS ignore_dot_tasks_insert BEFORE INSERT ON files WHEN NEW.rel = '.tasks' OR NEW.rel LIKE '.tasks/%' OR NEW.rel LIKE '%/.tasks/%' OR NEW.rel LIKE '%/.tasks' BEGIN SELECT RAISE(IGNORE); END;
+ CREATE TRIGGER IF NOT EXISTS ignore_dot_tasks_update BEFORE UPDATE ON files WHEN NEW.rel = '.tasks' OR NEW.rel LIKE '.tasks/%' OR NEW.rel LIKE '%/.tasks/%' OR NEW.rel LIKE '%/.tasks' BEGIN SELECT RAISE(IGNORE); END;
+ ''')
+ c.execute("DELETE FROM files WHERE rel = '.tasks' OR rel LIKE '.tasks/%' OR rel LIKE '%/.tasks/%' OR rel LIKE '%/.tasks'")
+
 with connect() as c:
  task_columns = {r['name'] for r in c.execute('PRAGMA table_info(tasks)')}
  for column in ('start_time', 'end_time', 'rich_text', 'attachments', 'document_rel', 'document_mtime'):

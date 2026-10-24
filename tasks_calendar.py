@@ -1,9 +1,18 @@
-# Rasd - إدارة المهام والتقويم (محدث: محاذاة دقيقة 100% بين عمود الوقت ومربعات المهام)
+# Rasd - إدارة المهام والتقويم (تحديث المرفقات، الحذف الفعلي، وحل باج التقويم)
 from common import *
 from storage import *
 
 class TasksCalendarMixin:
  def show_tasks(self,project=None):
+  try:
+   with connect() as c:
+    for col in ('subtasks', 'recurrence'):
+     try: c.execute(f'ALTER TABLE tasks ADD COLUMN {col} TEXT')
+     except sqlite3.OperationalError: pass
+    c.execute("DELETE FROM files WHERE rel = '.tasks' OR rel LIKE '.tasks/%' OR rel LIKE '%/.tasks/%'")
+    c.execute("DELETE FROM folder_tags WHERE path = '.tasks' OR path LIKE '.tasks/%' OR path LIKE '%/.tasks/%'")
+  except Exception: pass
+
   self.task_rollover_token=getattr(self,'task_rollover_token',0)+1;rollover_token=self.task_rollover_token;self.task_calendar_active=False
   if project and getattr(self,'project',''):
    self.save_view_state();self._tasks_return_to_project=True
@@ -50,7 +59,9 @@ class TasksCalendarMixin:
   for col,label,width,anchor in (('title','المهمة',370,'e'),('due','الموعد',160,'center'),('priority','الأولوية',95,'center'),('project','المشروع',145,'e'),('tags','التصنيفات',160,'e')):self.task_tree.heading(col,text=label);self.task_tree.column(col,width=width,minwidth=65,anchor=anchor,stretch=col=='title')
   self.task_tree.grid(row=0,column=0,sticky='nsew',padx=(5,0),pady=5);scroll=ttk.Scrollbar(list_card,orient='vertical',command=self.task_tree.yview);scroll.grid(row=0,column=1,sticky='ns',pady=5);self.task_tree.configure(yscrollcommand=scroll.set)
   self.task_tree.tag_configure('urgent',background='#fce4e4',foreground='#8d2028');self.task_tree.tag_configure('normal',background='#e9f2fb',foreground='#244e70');self.task_tree.tag_configure('low',background='#fff4d6',foreground='#725a16');self.task_tree.tag_configure('overdue',background='#f8dddd',foreground='#922c35');self.task_tree.tag_configure('today',background='#e4f3f1',foreground='#1b5b57');self.task_tree.tag_configure('done',foreground='#8997a1');self.task_tree.tag_configure('day_group',background='#dfe9ef',foreground='#19394e');self.task_tree.bind('<Double-1>',lambda e:self._task_open_selected_document());self.task_tree.bind('<<TreeviewSelect>>',lambda e:self._task_preview_selected())
-  footer=tk.Frame(workarea,bg='#eef3f7');footer.grid(row=3,column=0,sticky='ew',pady=(7,0));ttk.Button(footer,text='✓ إكمال',command=self._task_toggle_done).pack(side='right',padx=3);ttk.Button(footer,text='✎ بيانات المهمة',command=self._task_edit_selected).pack(side='right',padx=3);self.task_postpone_button=ttk.Button(footer,text='↷ تأجيل للغد',command=self._task_postpone);self.task_postpone_button.pack(side='right',padx=3);ttk.Button(footer,text='× حذف',command=self._task_delete_selected).pack(side='right',padx=3);self.task_page_size=400;self.task_page=0;self.task_page_var=tk.StringVar(value='');ttk.Button(footer,text='التالي ›',command=lambda:self._task_page_shift(1)).pack(side='left',padx=2);tk.Label(footer,textvariable=self.task_page_var,bg='#eef3f7',fg='#526b7b',font=('Segoe UI',8)).pack(side='left',padx=4);ttk.Button(footer,text='‹ السابق',command=lambda:self._task_page_shift(-1)).pack(side='left',padx=2);self.task_result_var=tk.StringVar(value='');tk.Label(footer,textvariable=self.task_result_var,bg='#eef3f7',fg='#718491',font=('Segoe UI',8),anchor='e').pack(side='left',fill='x',expand=True,padx=8)
+  footer=tk.Frame(workarea,bg='#eef3f7');footer.grid(row=3,column=0,sticky='ew',pady=(7,0));ttk.Button(footer,text='✓ إكمال',command=self._task_toggle_done).pack(side='right',padx=3);ttk.Button(footer,text='✎ تعديل المهمة',command=self._task_edit_selected).pack(side='right',padx=3);self.task_postpone_button=ttk.Button(footer,text='↷ تأجيل للغد',command=self._task_postpone);self.task_postpone_button.pack(side='right',padx=3);ttk.Button(footer,text='× حذف المهام وملفاتها',command=self._task_delete_selected).pack(side='right',padx=3)
+  ttk.Button(footer,text='🖨 طباعة وتصدير PDF',command=self._task_export_print).pack(side='right',padx=3)
+  self.task_page_size=400;self.task_page=0;self.task_page_var=tk.StringVar(value='');ttk.Button(footer,text='التالي ›',command=lambda:self._task_page_shift(1)).pack(side='left',padx=2);tk.Label(footer,textvariable=self.task_page_var,bg='#eef3f7',fg='#526b7b',font=('Segoe UI',8)).pack(side='left',padx=4);ttk.Button(footer,text='‹ السابق',command=lambda:self._task_page_shift(-1)).pack(side='left',padx=2);self.task_result_var=tk.StringVar(value='');tk.Label(footer,textvariable=self.task_result_var,bg='#eef3f7',fg='#718491',font=('Segoe UI',8),anchor='e').pack(side='left',fill='x',expand=True,padx=8)
   self._task_update_context_controls();self._task_refresh_rows();self.task_quick_entry.focus_set()
   self.after(30000,lambda token=rollover_token:self._task_rollover_tick(token))
 
@@ -241,7 +252,6 @@ class TasksCalendarMixin:
   self.task_search_job=self.after(220,self._task_refresh_rows)
 
  def _task_rollover_elapsed(self):
-  """Only timed tasks roll forward when their end time has passed; date-only tasks remain overdue."""
   now=datetime.now();today=now.date().isoformat();clock=now.strftime('%H:%M');stamp=now.strftime('%Y-%m-%d %H:%M:%S')
   try:
    with connect() as c:
@@ -249,8 +259,43 @@ class TasksCalendarMixin:
     return cur.rowcount>0
   except sqlite3.Error:return False
 
+ def _task_show_toast(self, title, message):
+  toast = tk.Toplevel(self)
+  toast.overrideredirect(True)
+  toast.attributes('-topmost', True)
+  toast.configure(bg='#102c3d')
+  tk.Label(toast, text=title, fg='#4caf50', bg='#102c3d', font=('Segoe UI', 10, 'bold')).pack(anchor='e', padx=16, pady=(12, 2))
+  tk.Label(toast, text=message, fg='white', bg='#102c3d', font=('Segoe UI', 9), wraplength=250, justify='right').pack(anchor='e', padx=16, pady=(0, 12))
+  toast.update_idletasks()
+  w, h = toast.winfo_width(), toast.winfo_height()
+  x = self.winfo_screenwidth() - w - 25
+  y = self.winfo_screenheight() - h - 65
+  toast.geometry(f'{w}x{h}+{x}+{y}')
+  def fade(alpha):
+   if alpha > 0:
+    toast.attributes('-alpha', alpha)
+    try: self.after(50, lambda: fade(alpha - 0.05))
+    except tk.TclError: pass
+   else:
+    try: toast.destroy()
+    except tk.TclError: pass
+  self.after(5000, lambda: fade(1.0))
+
  def _task_rollover_tick(self,token=None):
   if token is not None and token!=getattr(self,'task_rollover_token',None):return
+  
+  if not hasattr(self, 'notified_tasks'): self.notified_tasks = set()
+  now = datetime.now(); upcoming = now + timedelta(minutes=15)
+  today_iso = now.date().isoformat(); up_time = upcoming.strftime('%H:%M')
+  try:
+   with connect() as c:
+    tasks = c.execute('SELECT id, title FROM tasks WHERE completed_at IS NULL AND due_date=? AND start_time=?', (today_iso, up_time)).fetchall()
+    for t in tasks:
+     if t['id'] not in self.notified_tasks:
+      self._task_show_toast("⏳ مهمة تقترب (15 دقيقة)", t['title'])
+      self.notified_tasks.add(t['id'])
+  except Exception: pass
+  
   if getattr(self,'task_calendar_active',False):
    if getattr(self,'task_calendar_drag_state',None) is None and self._task_rollover_elapsed():
     self._task_calendar_draw(preserve_scroll=True)
@@ -309,10 +354,9 @@ class TasksCalendarMixin:
      query_where=query_where[:-1]+['(t.title LIKE ? OR t.description LIKE ? OR t.project LIKE ? OR t.tags LIKE ?)'];query_params=query_params[:-1]+['%'+search+'%']*4;where=' WHERE '+' AND '.join(query_where);total=int(c.execute('SELECT COUNT(*) FROM tasks t'+where,query_params).fetchone()[0])
     page_size=max(50,int(getattr(self,'task_page_size',400)));pages=max(1,(total+page_size-1)//page_size);self.task_page=max(0,min(getattr(self,'task_page',0),pages-1));offset=self.task_page*page_size
     order=" ORDER BY CASE WHEN t.completed_at IS NULL THEN 0 ELSE 1 END,CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END,t.due_date, t.priority,CASE WHEN t.start_time IS NULL THEN 1 ELSE 0 END,t.start_time,t.created_at DESC"
-    try:rows=c.execute('SELECT t.id,t.title,t.due_date,t.start_time,t.end_time,t.priority,t.project,t.tags,t.completed_at,t.created_at FROM tasks t'+where+order+' LIMIT ? OFFSET ?',query_params+[page_size,offset]).fetchall()
-    except sqlite3.OperationalError:
-     if not search or not fts_query:raise
-     query_where=query_where[:-1]+['(t.title LIKE ? OR t.description LIKE ? OR t.project LIKE ? OR t.tags LIKE ?)'];query_params=query_params[:-1]+['%'+search+'%']*4;where=' WHERE '+' AND '.join(query_where);total=int(c.execute('SELECT COUNT(*) FROM tasks t'+where,query_params).fetchone()[0]);pages=max(1,(total+page_size-1)//page_size);self.task_page=min(self.task_page,pages-1);offset=self.task_page*page_size;rows=c.execute('SELECT t.id,t.title,t.due_date,t.start_time,t.end_time,t.priority,t.project,t.tags,t.completed_at,t.created_at FROM tasks t'+where+order+' LIMIT ? OFFSET ?',query_params+[page_size,offset]).fetchall()
+    
+    try: rows=c.execute('SELECT t.id,t.title,t.due_date,t.start_time,t.end_time,t.priority,t.project,t.tags,t.completed_at,t.created_at,t.subtasks,t.recurrence FROM tasks t'+where+order+' LIMIT ? OFFSET ?',query_params+[page_size,offset]).fetchall()
+    except sqlite3.OperationalError: rows=c.execute('SELECT t.id,t.title,t.due_date,t.start_time,t.end_time,t.priority,t.project,t.tags,t.completed_at,t.created_at FROM tasks t'+where+order+' LIMIT ? OFFSET ?',query_params+[page_size,offset]).fetchall()
   except sqlite3.Error as exc:
    self.task_result_var.set('تعذر تحميل المهام: '+str(exc)[:100]);return
   selected_before=self.task_tree.selection()
@@ -320,17 +364,19 @@ class TasksCalendarMixin:
   grouped=key=='upcoming';last_day=None
   for row in rows:
    due=row['due_date'] or '';done=bool(row['completed_at']);priority=int(row['priority']);tags=[x for x in (row['tags'] or '').split(',') if x]
+   try: rec_icon = ' 🔄' if row['recurrence'] and row['recurrence'] != 'لا يوجد' else ''
+   except Exception: rec_icon = ''
    if grouped and due!=last_day:
     try:day=datetime.strptime(due,'%Y-%m-%d').date();label=day.strftime('%A %d-%m-%Y')
     except ValueError:label=due
     self.task_tree.insert('','end',iid='day:'+due,values=('▾  '+label,'','','',''),tags=('day_group',));last_day=due
    time_label=' – '.join(x for x in (row['start_time'],row['end_time']) if x);due_label=self._task_date_text(due)+((' · '+time_label) if time_label else '')
    tag='done' if done else ('overdue' if due and due<today else ('today' if due==today else ({1:'urgent',2:'normal',3:'low'}.get(priority,''))))
-   values=(('✓  ' if done else '')+row['title'],due_label,{1:'عاجلة',2:'عادية',3:'منخفضة'}.get(priority,'عادية'),row['project'],'  '.join('#'+x for x in tags))
+   values=(('✓  ' if done else '')+row['title']+rec_icon,due_label,{1:'عاجلة',2:'عادية',3:'منخفضة'}.get(priority,'عادية'),row['project'],'  '.join('#'+x for x in tags))
    self.task_tree.insert('','end',iid=str(row['id']),values=values,tags=(tag,) if tag else ())
   for iid in selected_before:
    if self.task_tree.exists(iid):self.task_tree.selection_add(iid)
-  shown=len(rows);self.task_result_var.set(f'{total:,} مهمة في النتيجة · يعرض {offset+1 if total else 0}–{offset+shown:,} من {total:,} · انتهاء موعد المهمة المحددة بوقت ينقلها للغد')
+  shown=len(rows);self.task_result_var.set(f'{total:,} مهمة في النتيجة · يعرض {offset+1 if total else 0}–{offset+shown:,} من {total:,}')
   self.task_page_var.set(f'صفحة {self.task_page+1:,} / {pages:,}')
   self._task_preview_selected()
 
@@ -362,15 +408,43 @@ class TasksCalendarMixin:
   for iid in self.task_tree.selection():
    if str(iid).isdigit():ids.append(int(iid))
   return ids
+  
  def _task_toggle_done(self):
   ids=self._task_selected_ids()
   if not ids:return messagebox.showinfo('المهام','حدد مهمة واحدة على الأقل.',parent=self)
-  now=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+  now=datetime.now(); now_str=now.strftime('%Y-%m-%d %H:%M:%S')
   with connect() as c:
    for task_id in ids:
-    row=c.execute('SELECT completed_at FROM tasks WHERE id=?',(task_id,)).fetchone()
-    if row:c.execute('UPDATE tasks SET completed_at=?,updated_at=? WHERE id=?',(None if row['completed_at'] else now,now,task_id))
+    try: row=c.execute('SELECT * FROM tasks WHERE id=?',(task_id,)).fetchone()
+    except sqlite3.Error: continue
+    if row:
+     if row['completed_at']:
+      c.execute('UPDATE tasks SET completed_at=NULL, updated_at=? WHERE id=?',(now_str,task_id))
+     else:
+      c.execute('UPDATE tasks SET completed_at=?, updated_at=? WHERE id=?',(now_str,now_str,task_id))
+      try: rec = row['recurrence'] if row['recurrence'] else None
+      except Exception: rec = None
+      if rec and rec != 'لا يوجد' and row['due_date']:
+       try:
+        d = datetime.strptime(row['due_date'], '%Y-%m-%d').date()
+        if rec == 'يومياً': next_d = d + timedelta(days=1)
+        elif rec == 'أسبوعياً': next_d = d + timedelta(days=7)
+        elif rec == 'شهرياً': next_d = date(d.year + (d.month // 12), (d.month % 12) + 1, d.day)
+        
+        new_subs = []
+        try:
+         if row['subtasks']:
+          for s in json.loads(row['subtasks']):
+           s['done'] = False
+           new_subs.append(s)
+        except Exception: pass
+          
+        c.execute('''INSERT INTO tasks(title,description,rich_text,project,due_date,start_time,end_time,priority,tags,attachments,subtasks,recurrence,created_at,updated_at)
+                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                  (row['title'], row['description'], '', row['project'], next_d.isoformat(), row['start_time'], row['end_time'], row['priority'], row['tags'], '[]', json.dumps(new_subs, ensure_ascii=False), rec, now_str, now_str))
+       except Exception: pass
   self._task_refresh_rows()
+  
  def _task_postpone(self):
   if self.task_filter!='today':return
   ids=self._task_selected_ids()
@@ -379,48 +453,199 @@ class TasksCalendarMixin:
   with connect() as c:
    for task_id in ids:c.execute('UPDATE tasks SET due_date=?,start_time=NULL,end_time=NULL,updated_at=? WHERE id=? AND completed_at IS NULL',(new_due,now,task_id))
   self._task_refresh_rows()
+  
+ def _task_delete_artifacts(self, task_ids):
+  with connect() as c:
+   rows = c.execute(f'SELECT * FROM tasks WHERE id IN ({",".join("?" for _ in task_ids)})', task_ids).fetchall()
+  for row in rows:
+   try:
+    folder = self._task_document_folder(row)
+    if row['document_rel']:
+     stored = (LOG/row['document_rel']).resolve()
+     if stored.is_file() and stored.parent == folder:
+      stored.unlink(missing_ok=True)
+      stored.with_suffix('.json').unlink(missing_ok=True)
+      stored.with_suffix('.md').unlink(missing_ok=True)
+    else:
+     for f in folder.glob(f'مهمة-{row["id"]}-*.*'): f.unlink(missing_ok=True)
+    attach_dir = folder/f'مرفقات المهمة {row["id"]}'
+    if attach_dir.exists() and attach_dir.is_dir():
+     shutil.rmtree(attach_dir, ignore_errors=True)
+   except Exception: pass
+   
  def _task_delete_selected(self):
   ids=self._task_selected_ids()
   if not ids:return messagebox.showinfo('المهام','حدد مهمة واحدة على الأقل.',parent=self)
-  if not messagebox.askyesno('حذف المهام',f'حذف {len(ids)} مهمة؟ لا يمكن التراجع عن الحذف.',parent=self):return
+  if not messagebox.askyesno('حذف المهام',f'حذف {len(ids)} مهمة وملفاتها المرفقة نهائياً؟',parent=self):return
+  self._task_delete_artifacts(ids)
   with connect() as c:c.executemany('DELETE FROM tasks WHERE id=?',[(x,) for x in ids])
   self._task_refresh_rows()
+
+ def _task_export_print(self):
+  if not hasattr(self, 'task_tree'): return
+  items = []
+  for iid in self.task_tree.get_children():
+   if self.task_tree.item(iid, 'tags') and 'day_group' in self.task_tree.item(iid, 'tags'):
+    items.append(('header', self.task_tree.item(iid, 'values')[0]))
+   else:
+    items.append(('task', self.task_tree.item(iid, 'values')))
+  
+  html = "<html dir='rtl'><head><meta charset='utf-8'><title>تقرير المهام - Rasd</title>"
+  html += "<style>body{font-family:'Segoe UI', Tahoma, Arial; padding:30px; color:#19394e; background:#f4f7f9;} "
+  html += "table{width:100%; border-collapse:collapse; margin-top:25px; background:white; box-shadow: 0 1px 3px rgba(0,0,0,0.1);} "
+  html += "th, td{border:1px solid #d6e0e6; padding:12px; text-align:right;} "
+  html += "th{background-color:#087e8b; color:white; font-weight:bold;} "
+  html += "h2{color:#102c3d; border-bottom: 2px solid #087e8b; padding-bottom: 10px;} "
+  html += ".header-row{background-color:#dfe7ec; font-weight:bold; color:#102c3d;} "
+  html += "@media print { body{background:white;} table{box-shadow:none;} }</style></head><body>"
+  html += f"<h2>تقرير المهام - النطاق: {self.task_scope or 'كل المشاريع'}</h2>"
+  html += f"<p style='color:#617789;'>تاريخ التقرير: {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>"
+  html += "<table><tr><th>المهمة</th><th>الموعد</th><th>الأولوية</th><th>المشروع</th><th>الهاشتاجات</th></tr>"
+  
+  for kind, val in items:
+   if kind == 'header':
+    html += f"<tr class='header-row'><td colspan='5'>{val}</td></tr>"
+   else:
+    html += f"<tr><td>{val[0]}</td><td>{val[1]}</td><td>{val[2]}</td><td>{val[3]}</td><td>{val[4]}</td></tr>"
+  
+  html += "</table><script>setTimeout(function(){ window.print(); }, 500);</script></body></html>"
+  
+  export_path = LOG / '.tasks' / 'export.html'
+  export_path.parent.mkdir(exist_ok=True, parents=True)
+  export_path.write_text(html, encoding='utf-8')
+  webbrowser.open(str(export_path))
 
  def _task_edit_selected(self):
   ids=self._task_selected_ids()
   if len(ids)!=1:return messagebox.showinfo('المهام','حدد مهمة واحدة للتعديل.',parent=self)
   task_id=ids[0]
-  with connect() as c:row=c.execute('SELECT * FROM tasks WHERE id=?',(task_id,)).fetchone()
+  with connect() as c:
+   try: row=c.execute('SELECT * FROM tasks WHERE id=?',(task_id,)).fetchone()
+   except sqlite3.Error: return
   if not row:return self._task_refresh_rows()
   self._task_task_dialog(row=row,project_locked=bool(self.task_scope))
 
  def _task_build_preview_panel(self,panel):
-  panel.grid_columnconfigure(0,weight=1);tk.Label(panel,text='معاينة المهمة',bg='#dfe7ec',fg='#19394e',font=('Segoe UI',12,'bold'),anchor='e',padx=12,pady=12).grid(row=0,column=0,sticky='ew')
+  panel.grid_columnconfigure(0,weight=1)
+  tk.Label(panel,text='معاينة المهمة',bg='#dfe7ec',fg='#19394e',font=('Segoe UI',12,'bold'),anchor='e',padx=12,pady=12).grid(row=0,column=0,sticky='ew')
   self.task_preview_title=tk.Label(panel,text='اختر مهمة من القائمة',bg='white',fg='#19394e',font=('Segoe UI',13,'bold'),anchor='e',justify='right',wraplength=275);self.task_preview_title.grid(row=1,column=0,sticky='ew',padx=12,pady=(16,8))
   self.task_preview_meta=tk.Label(panel,text='ستظهر تفاصيلها ومرفقاتها هنا.',bg='white',fg='#718491',font=('Segoe UI',9),anchor='e',justify='right',wraplength=275);self.task_preview_meta.grid(row=2,column=0,sticky='ew',padx=12,pady=(0,10))
-  self.task_preview_text=tk.Text(panel,height=14,wrap='word',font=('Segoe UI',9),relief='flat',bg='#f7fafb',fg='#344c5b',state='disabled');self.task_preview_text.grid(row=3,column=0,sticky='nsew',padx=10,pady=4);panel.grid_rowconfigure(3,weight=1)
+  
+  self.task_preview_subtasks_frame=tk.Frame(panel,bg='white');self.task_preview_subtasks_frame.grid(row=3,column=0,sticky='nsew',padx=10,pady=4)
+  panel.grid_rowconfigure(3,weight=1) 
+  
   self.task_preview_attachments=tk.Label(panel,text='',bg='white',fg='#607786',font=('Segoe UI',8),anchor='e',justify='right',wraplength=275);self.task_preview_attachments.grid(row=4,column=0,sticky='ew',padx=12,pady=7)
   self.task_preview_attachments_frame=tk.Frame(panel,bg='white');self.task_preview_attachments_frame.grid(row=5,column=0,sticky='ew',padx=8,pady=3)
-  actions=tk.Frame(panel,bg='white');actions.grid(row=6,column=0,sticky='ew',padx=8,pady=(4,10));ttk.Button(actions,text='فتح ملف المهمة TXT',command=self._task_open_selected_document).pack(fill='x',pady=2);ttk.Button(actions,text='تعديل بيانات المهمة',command=self._task_edit_selected).pack(fill='x',pady=2);ttk.Button(actions,text='فتح مجلد المهمة',command=self._task_open_selected_folder).pack(fill='x',pady=2)
+  actions=tk.Frame(panel,bg='white');actions.grid(row=6,column=0,sticky='ew',padx=8,pady=(4,10));ttk.Button(actions,text='فتح ملف المهمة TXT',command=self._task_open_selected_document).pack(fill='x',pady=2);ttk.Button(actions,text='تعديل المهمة',command=self._task_edit_selected).pack(fill='x',pady=2);ttk.Button(actions,text='فتح مجلد المهمة',command=self._task_open_selected_folder).pack(fill='x',pady=2)
+
+ def _task_toggle_subtask(self, task_id, index, var):
+  with connect() as c:
+   try:
+    row = c.execute('SELECT subtasks FROM tasks WHERE id=?', (task_id,)).fetchone()
+    if row:
+     subs = json.loads(row['subtasks']) if row['subtasks'] else []
+     subs[index]['done'] = bool(var.get())
+     c.execute('UPDATE tasks SET subtasks=?, updated_at=? WHERE id=?', (json.dumps(subs, ensure_ascii=False), datetime.now().strftime('%Y-%m-%d %H:%M:%S'), task_id))
+   except Exception: pass
+  self._task_ensure_document_artifacts(task_id)
+  if getattr(self,'task_preview_task_id',None)==task_id:self._task_preview_selected()
+
+ def _task_delete_subtask(self, task_id, index):
+  with connect() as c:
+   try:
+    row = c.execute('SELECT subtasks FROM tasks WHERE id=?', (task_id,)).fetchone()
+    if row:
+     subs = json.loads(row['subtasks']) if row['subtasks'] else []
+     del subs[index]
+     c.execute('UPDATE tasks SET subtasks=?, updated_at=? WHERE id=?', (json.dumps(subs, ensure_ascii=False), datetime.now().strftime('%Y-%m-%d %H:%M:%S'), task_id))
+   except Exception: pass
+  self._task_ensure_document_artifacts(task_id)
+  if getattr(self,'task_preview_task_id',None)==task_id:self._task_preview_selected()
+  
+ def _task_edit_subtask(self, task_id, index):
+  with connect() as c:
+   try:
+    row = c.execute('SELECT subtasks FROM tasks WHERE id=?', (task_id,)).fetchone()
+    if not row or not row['subtasks']: return
+    subs = json.loads(row['subtasks'])
+    current = subs[index]['title']
+   except Exception: return
+  new_title = simpledialog.askstring('تعديل خطوة', 'قم بتعديل الخطوة:', initialvalue=current, parent=self)
+  if new_title and new_title.strip():
+   subs[index]['title'] = new_title.strip()
+   with connect() as c:
+    c.execute('UPDATE tasks SET subtasks=?, updated_at=? WHERE id=?', (json.dumps(subs, ensure_ascii=False), datetime.now().strftime('%Y-%m-%d %H:%M:%S'), task_id))
+   self._task_ensure_document_artifacts(task_id)
+   if getattr(self,'task_preview_task_id',None)==task_id:self._task_preview_selected()
+   if getattr(self,'task_calendar_selected_id',None)==task_id:self._task_calendar_select_task(task_id)
+
+ def _task_add_subtask(self, task_id, var, widget_to_focus=None):
+  title = var.get().strip()
+  if not title: return
+  var.set('')
+  with connect() as c:
+   try:
+    row = c.execute('SELECT subtasks FROM tasks WHERE id=?', (task_id,)).fetchone()
+    subs = json.loads(row['subtasks']) if row and row['subtasks'] else []
+   except Exception: subs = []
+   subs.append({'title': title, 'done': False})
+   c.execute('UPDATE tasks SET subtasks=?, updated_at=? WHERE id=?', (json.dumps(subs, ensure_ascii=False), datetime.now().strftime('%Y-%m-%d %H:%M:%S'), task_id))
+  self._task_ensure_document_artifacts(task_id)
+  if getattr(self,'task_preview_task_id',None)==task_id:self._task_preview_selected()
+  if getattr(self,'task_calendar_selected_id',None)==task_id:self._task_calendar_select_task(task_id)
+  if widget_to_focus: self.after_idle(lambda: widget_to_focus.focus_set())
 
  def _task_preview_selected(self):
   if not hasattr(self,'task_preview_title'):return
   ids=self._task_selected_ids()
   if len(ids)!=1:
-   self.task_preview_title.configure(text='اختر مهمة واحدة من القائمة');self.task_preview_meta.configure(text='ستظهر تفاصيلها ومرفقاتها هنا.');self.task_preview_text.configure(state='normal');self.task_preview_text.delete('1.0','end');self.task_preview_text.configure(state='disabled');self.task_preview_attachments.configure(text='');self.task_preview_task_id=None
-   for child in self.task_preview_attachments_frame.winfo_children():child.destroy()
+   self.task_preview_title.configure(text='اختر مهمة واحدة من القائمة');self.task_preview_meta.configure(text='ستظهر تفاصيلها ومرفقاتها هنا.');self.task_preview_attachments.configure(text='');self.task_preview_task_id=None
+   for child in getattr(self, 'task_preview_attachments_frame', tk.Frame()).winfo_children():child.destroy()
+   for child in getattr(self, 'task_preview_subtasks_frame', tk.Frame()).winfo_children():child.destroy()
    return
-  with connect() as c:row=c.execute('SELECT * FROM tasks WHERE id=?',(ids[0],)).fetchone()
+  with connect() as c:
+   try: row=c.execute('SELECT * FROM tasks WHERE id=?',(ids[0],)).fetchone()
+   except sqlite3.Error: return
   if not row:return
-  self.task_preview_task_id=row['id'];self.task_preview_title.configure(text=row['title']);due=self._task_date_text(row['due_date'])+(' · '+(' – '.join(x for x in (row['start_time'],row['end_time']) if x) if row['start_time'] or row['end_time'] else ''));priority_text={1:'عاجلة',2:'عادية',3:'منخفضة'}.get(row['priority'],'عادية');state_text='مكتملة' if row['completed_at'] else 'مفتوحة';self.task_preview_meta.configure(text=f"المشروع: {row['project']}\nالموعد: {due}\nالأولوية: {priority_text}\nالحالة: {state_text}")
-  self.task_preview_text.configure(state='normal');self.task_preview_text.delete('1.0','end');self.task_preview_text.insert('1.0',row['description'] or 'افتح صفحة المهمة لكتابة التفاصيل وإضافة المرفقات.');self.task_preview_text.configure(state='disabled')
-  attachments=self._task_attachment_values(row);self.task_preview_attachments.configure(text=('المرفقات: '+str(len(attachments)) if attachments else 'لا توجد مرفقات'))
-  for child in self.task_preview_attachments_frame.winfo_children():child.destroy()
-  for item in attachments:
-   path=(LOG/item['path']).resolve()
-   line=tk.Frame(self.task_preview_attachments_frame,bg='white');line.pack(fill='x',pady=1)
-   ttk.Button(line,text='×',width=3,command=lambda i=item:self._task_remove_attachment(row['id'],i)).pack(side='left')
-   ttk.Button(line,text='📎 '+item.get('name',path.name),command=lambda p=path:os.startfile(str(p))).pack(side='right',fill='x',expand=True)
+  self.task_preview_task_id=row['id'];self.task_preview_title.configure(text=row['title']);due=self._task_date_text(row['due_date'])+(' · '+(' – '.join(x for x in (row['start_time'],row['end_time']) if x) if row['start_time'] or row['end_time'] else ''));priority_text={1:'عاجلة',2:'عادية',3:'منخفضة'}.get(row['priority'],'عادية');state_text='مكتملة' if row['completed_at'] else 'مفتوحة'
+  try: rec_text = f" · دورية: {row['recurrence']}" if row['recurrence'] and row['recurrence']!='لا يوجد' else ""
+  except Exception: rec_text = ""
+  self.task_preview_meta.configure(text=f"المشروع: {row['project']}\nالموعد: {due}\nالأولوية: {priority_text} · {state_text}{rec_text}")
+  
+  for child in self.task_preview_subtasks_frame.winfo_children():child.destroy()
+  try: subtasks = json.loads(row['subtasks']) if row['subtasks'] else []
+  except Exception: subtasks = []
+  
+  completed_subs = sum(1 for s in subtasks if s.get('done'))
+  tk.Label(self.task_preview_subtasks_frame, text=f'قائمة خطوات التنفيذ ({completed_subs}/{len(subtasks)}):', bg='white', fg='#19394e', font=('Segoe UI', 9, 'bold')).pack(anchor='e', pady=(0,4))
+  for i, sub in enumerate(subtasks):
+   f = tk.Frame(self.task_preview_subtasks_frame, bg='white')
+   f.pack(fill='x', pady=2)
+   var = tk.BooleanVar(value=sub.get('done', False))
+   cb = tk.Checkbutton(f, text=sub.get('title', ''), variable=var, bg='white', activebackground='white', command=lambda idx=i, v=var: self._task_toggle_subtask(row['id'], idx, v))
+   cb.pack(side='right', fill='x', expand=True, anchor='e')
+   ttk.Button(f, text='×', width=2, command=lambda idx=i: self._task_delete_subtask(row['id'], idx)).pack(side='left', padx=1)
+   ttk.Button(f, text='✎', width=2, command=lambda idx=i: self._task_edit_subtask(row['id'], idx)).pack(side='left', padx=1)
+  
+  add_f = tk.Frame(self.task_preview_subtasks_frame, bg='white')
+  add_f.pack(fill='x', pady=6)
+  new_sub_var = tk.StringVar()
+  sub_entry = ttk.Entry(add_f, textvariable=new_sub_var, justify='right')
+  sub_entry.pack(side='right', fill='x', expand=True, padx=2)
+  sub_entry.bind('<Return>', lambda e, t=row['id'], v=new_sub_var: self._task_add_subtask(t, v, e.widget))
+  ttk.Button(add_f, text='＋ خطوة', width=7, command=lambda t=row['id'], v=new_sub_var: self._task_add_subtask(t, v, sub_entry)).pack(side='left', padx=2)
+
+  try: attachments=self._task_attachment_values(row)
+  except Exception: attachments = []
+  self.task_preview_attachments.configure(text=('المرفقات والروابط: '+str(len(attachments)) if attachments else 'لا توجد مرفقات'))
+  if hasattr(self, 'task_preview_attachments_frame'):
+   for child in self.task_preview_attachments_frame.winfo_children():child.destroy()
+   for item in attachments:
+    line=tk.Frame(self.task_preview_attachments_frame,bg='white');line.pack(fill='x',pady=1)
+    ttk.Button(line,text='×',width=3,command=lambda i=item:self._task_remove_attachment(row['id'],i)).pack(side='left', padx=1)
+    ttk.Button(line,text='👁',width=3,command=lambda i=item:self._task_open_attachment(i)).pack(side='left', padx=1)
+    btn_text = item.get('name', Path(item['path']).name)
+    tk.Label(line,text=btn_text, bg='white', fg='#3478e5', font=('Segoe UI', 8), anchor='e').pack(side='right',fill='x',expand=True)
 
  def _task_selected_row(self):
   ids=self._task_selected_ids()
@@ -429,18 +654,30 @@ class TasksCalendarMixin:
  def _task_open_selected_document(self):
   row=self._task_selected_row()
   if row:self._task_open_document(row['id'])
+  
  def _task_open_selected_folder(self):
   row=self._task_selected_row()
   if not row:return
-  if not row['project']:return messagebox.showwarning('المهمة','لا يمكن فتح مجلد مهمة غير مرتبطة بمشروع.',parent=self)
-  folder=LOG/row['project']/('مهام '+row['project']);folder.mkdir(parents=True,exist_ok=True);os.startfile(str(folder))
+  try:os.startfile(str(self._task_document_folder(row)))
+  except Exception as exc:messagebox.showwarning('المهمة',str(exc),parent=self)
 
  def _task_document_folder(self,row):
   project=str(row['project'] or '').strip()
   if not project:raise ValueError('لا يمكن حفظ مستند المهمة بدون مشروع.')
   project_root=(LOG/project).resolve()
   if not is_project_path(project_root):raise ValueError('مسار المشروع خارج مجلد Log.')
-  folder=project_root/('مهام '+project);folder.mkdir(parents=True,exist_ok=True);return folder
+  folder=project_root/'.tasks'
+  old_folder=project_root/('مهام '+project)
+  if old_folder.exists() and not folder.exists():
+   try:old_folder.rename(folder)
+   except OSError:folder=old_folder
+  folder.mkdir(parents=True,exist_ok=True)
+  if os.name == 'nt':
+   try:
+    import ctypes
+    ctypes.windll.kernel32.SetFileAttributesW(str(folder), 2)
+   except Exception: pass
+  return folder
 
  def _task_ensure_document_artifacts(self,task_id):
   with connect() as c:row=c.execute('SELECT * FROM tasks WHERE id=?',(task_id,)).fetchone()
@@ -452,17 +689,27 @@ class TasksCalendarMixin:
    if not is_project_path(stored) or stored.parent!=folder.resolve():raise ValueError('مسار مستند المهمة خارج مجلد المهمة.')
    text_path=stored if stored.suffix.casefold()=='.txt' else stored.with_suffix('.txt')
   else:text_path=folder/f'مهمة-{task_id}-{safe_title}.txt'
-  if not text_path.exists():
-   legacy=text_path.with_suffix('.md');content=row['description'] or ''
-   if legacy.is_file():
-    old=legacy.read_text(encoding='utf-8',errors='replace')
-    if old.startswith('# '):content=old.split('\n',2)[-1].lstrip('\n')
-   text_path.write_text(content,encoding='utf-8')
+  
+  content=row['description'] or ''
+  try:subtasks=json.loads(row['subtasks']) if row['subtasks'] else []
+  except Exception:subtasks=[]
+  
+  if subtasks:
+   content += '\n\n--- خطوات التنفيذ ---\n'
+   for s in subtasks:
+    content += f"- [{'x' if s.get('done') else ' '}] {s.get('title', '')}\n"
+    
+  text_path.write_text(content,encoding='utf-8')
+  
   attachment_path=folder/f'مرفقات المهمة {task_id}';attachment_path.mkdir(exist_ok=True)
   try:attachments=json.loads(row['attachments'] or '[]')
   except (ValueError,TypeError):attachments=[]
+  
+  try: rec = row['recurrence'] if row['recurrence'] else 'لا يوجد'
+  except Exception: rec = 'لا يوجد'
+  
   json_path=text_path.with_suffix('.json')
-  metadata={'schema_version':1,'task_id':int(task_id),'title':row['title'],'project':row['project'],'due_date':row['due_date'],'start_time':row['start_time'],'end_time':row['end_time'],'priority':row['priority'],'tags':row['tags'],'attachments':attachments}
+  metadata={'schema_version':1,'task_id':int(task_id),'title':row['title'],'project':row['project'],'due_date':row['due_date'],'start_time':row['start_time'],'end_time':row['end_time'],'priority':row['priority'],'tags':row['tags'],'recurrence':rec,'subtasks':subtasks,'attachments':attachments}
   json_path.write_text(json.dumps(metadata,ensure_ascii=False,indent=2),encoding='utf-8')
   mtime=text_path.stat().st_mtime
   with connect() as c:c.execute('UPDATE tasks SET document_rel=?,document_mtime=? WHERE id=?',(self._task_log_relative(text_path),mtime,task_id))
@@ -476,7 +723,7 @@ class TasksCalendarMixin:
  def _task_sync_text_documents(self,project=None):
   try:
    with connect() as c:
-    sql='SELECT id,title,document_rel,document_mtime FROM tasks WHERE document_rel IS NOT NULL';params=()
+    sql='SELECT id,title,document_rel,document_mtime,subtasks FROM tasks WHERE document_rel IS NOT NULL';params=()
     if project:sql+=' AND project=?';params=(project,)
     rows=c.execute(sql,params).fetchall()
   except sqlite3.Error:return 0
@@ -488,12 +735,25 @@ class TasksCalendarMixin:
     mtime=path.stat().st_mtime
     if row['document_mtime'] is not None and abs(float(row['document_mtime'])-mtime)<0.001:continue
     content=path.read_text(encoding='utf-8',errors='replace')
-    lines=content.splitlines()
-    if lines and lines[0].strip().lstrip('#').strip()==str(row['title']).strip():content='\n'.join(lines[1:]).lstrip('\n')
-    updates.append((content,self._task_log_relative(path),mtime,datetime.now().strftime('%Y-%m-%d %H:%M:%S'),row['id']))
-   except (OSError,ValueError,TypeError):continue
+    
+    parts = content.split('--- خطوات التنفيذ ---')
+    desc_part = parts[0].strip()
+    lines=desc_part.splitlines()
+    if lines and lines[0].strip().lstrip('#').strip()==str(row['title']).strip():desc_part='\n'.join(lines[1:]).lstrip('\n')
+    
+    new_subs_json = row['subtasks']
+    if len(parts) > 1:
+     parsed_subs = []
+     for line in parts[1].splitlines():
+      line = line.strip()
+      if line.startswith('- [x]') or line.startswith('- [X]'): parsed_subs.append({'title': line[5:].strip(), 'done': True})
+      elif line.startswith('- [ ]'): parsed_subs.append({'title': line[5:].strip(), 'done': False})
+     new_subs_json = json.dumps(parsed_subs, ensure_ascii=False)
+     
+    updates.append((desc_part,new_subs_json,self._task_log_relative(path),mtime,datetime.now().strftime('%Y-%m-%d %H:%M:%S'),row['id']))
+   except Exception:continue
   if updates:
-   with connect() as c:c.executemany('UPDATE tasks SET description=?,document_rel=?,document_mtime=?,updated_at=? WHERE id=?',updates)
+   with connect() as c:c.executemany('UPDATE tasks SET description=?,subtasks=?,document_rel=?,document_mtime=?,updated_at=? WHERE id=?',updates)
   return len(updates)
 
  def _task_open_document(self,task_id):
@@ -512,20 +772,24 @@ class TasksCalendarMixin:
   if not paths:return
   with connect() as c:row=c.execute('SELECT * FROM tasks WHERE id=?',(task_id,)).fetchone()
   if not row:return
-  folder=self._task_document_folder(row);attach_dir=folder/f'مرفقات المهمة {task_id}';attach_dir.mkdir(exist_ok=True);attachments=self._task_attachment_values(row)
-  for raw in paths:
-   source=Path(raw)
+  folder=self._task_document_folder(row);attach_dir=folder/f'مرفقات المهمة {task_id}';attachments=self._task_attachment_values(row)
+  for item in paths:
+   if isinstance(item,dict) and item.get('is_link'):
+    if item not in attachments: attachments.append(item)
+    continue
+   source=Path(item)
    if not source.is_file():continue
+   attach_dir.mkdir(exist_ok=True)
    target=attach_dir/(secrets.token_hex(4)+'_'+source.name);shutil.copy2(source,target);attachments.append({'name':source.name,'path':self._task_log_relative(target)})
   with connect() as c:c.execute('UPDATE tasks SET attachments=?,updated_at=? WHERE id=?',(json.dumps(attachments,ensure_ascii=False),datetime.now().strftime('%Y-%m-%d %H:%M:%S'),task_id))
   self._task_ensure_document_artifacts(task_id)
 
  def _task_remove_attachment(self,task_id,item):
-  if not messagebox.askyesno('إزالة المرفق',f'إزالة الملف المرفق «{item.get("name","ملف")}» من هذه المهمة؟',parent=self):return
+  if not messagebox.askyesno('إزالة المرفق',f'إزالة الملف المرفق «{item.get("name","ملف")}» نهائياً من القرص الصلب؟',parent=self):return
   try:
    with connect() as c:owner=c.execute('SELECT * FROM tasks WHERE id=?',(task_id,)).fetchone()
    row_folder=self._task_document_folder(owner) if owner else None;path=(LOG/item['path']).resolve()
-   if path.is_file() and row_folder and path.is_relative_to(row_folder.resolve()):path.unlink()
+   if not item.get('is_link') and path.is_file() and row_folder and path.is_relative_to(row_folder.resolve()):path.unlink()
   except (OSError,ValueError):pass
   with connect() as c:row=c.execute('SELECT * FROM tasks WHERE id=?',(task_id,)).fetchone()
   if not row:return
@@ -533,22 +797,144 @@ class TasksCalendarMixin:
   with connect() as c:c.execute('UPDATE tasks SET attachments=?,updated_at=? WHERE id=?',(json.dumps(attachments,ensure_ascii=False),datetime.now().strftime('%Y-%m-%d %H:%M:%S'),task_id))
   self._task_ensure_document_artifacts(task_id)
   if getattr(self,'task_preview_task_id',None)==task_id:self._task_preview_selected()
+  if getattr(self,'task_calendar_selected_id',None)==task_id:self._task_calendar_select_task(task_id)
+
+ def _task_open_attachment(self, item):
+  try:
+   p = (LOG/item['path']).resolve()
+   if not p.exists(): return messagebox.showwarning('غير موجود','الملف لم يعد موجوداً في المسار.',parent=self)
+   if item.get('is_link'):
+    self._task_jump_to_explorer(p)
+   else:
+    os.startfile(str(p))
+  except Exception as exc: messagebox.showerror('خطأ',str(exc),parent=self)
+
+ def _task_jump_to_explorer(self, target_path):
+  p = Path(target_path).resolve()
+  if not p.exists(): return
+  try:
+   rel = p.relative_to(LOG.resolve())
+   self.project = rel.parts[0]
+   self.root = (LOG/self.project).resolve()
+  except ValueError: return
+  
+  self.current = p.parent; self.mode = 'folder'; self.folder_group = 'الكل'; self.view_mode = 'files'
+  self.backstack=[]; self.forwardstack=[]
+  if hasattr(self, 'hide_search_page'): self.hide_search_page()
+  if hasattr(self, 'collection_button'): self.collection_button.pack_forget()
+  self.build_explorer(); self.animate_window_in()
+  
+  iid = str(p)
+  if getattr(self,'file_tree',None):
+   try:
+    self.file_tree.selection_set(iid);self.file_tree.focus(iid);self.file_tree.see(iid)
+   except tk.TclError: pass
+
+ def _task_link_project_file(self, pending, label, row, project_name, parent):
+  if not project_name or project_name=='اختر مشروعًا…':
+   return messagebox.showwarning('المشروع','يرجى اختيار المشروع أولاً من القائمة.',parent=parent)
+  project_root = (LOG/project_name).resolve()
+  if not project_root.exists(): return
+  chosen=filedialog.askopenfilename(initialdir=str(project_root),parent=parent,title='اختر ملفاً من المشروع لربطه بالمهمة')
+  if not chosen:return
+  try:
+   rel_path = Path(chosen).resolve().relative_to(LOG.resolve()).as_posix()
+   pending.append({'name': '🔗 ' + Path(chosen).name, 'path': rel_path, 'is_link': True})
+   base=len(self._task_attachment_values(row)) if row else 0
+   label.set(f'{base+len(pending)} مرفق/رابط')
+  except ValueError:
+   messagebox.showwarning('مسار خاطئ','يجب اختيار ملف من داخل مجلد المشروع المختار.',parent=parent)
 
  def _task_task_dialog(self,row=None,project_locked=False,initial_date=None,project=None,initial_start=None,initial_end=None):
+  def safe_val(r, col, default=''):
+   if not r: return default
+   try: return r[col] if r[col] is not None else default
+   except Exception: return default
+   
+  title_val = safe_val(row, 'title', '')
+  due_val = safe_val(row, 'due_date', '') or (initial_date.isoformat() if hasattr(initial_date, 'isoformat') else str(initial_date) if initial_date else '')
+  start_val = safe_val(row, 'start_time', '') or (initial_start or '')
+  end_val = safe_val(row, 'end_time', '') or (initial_end or '')
+  try: pri_val = {1:'عاجلة',2:'عادية',3:'منخفضة'}.get(int(safe_val(row, 'priority', 2)), 'عادية')
+  except Exception: pri_val = 'عادية'
+  proj_val = project if project is not None else (safe_val(row, 'project', '') or getattr(self, 'task_scope', ''))
+  tags_val = safe_val(row, 'tags', '')
+  rec_val = safe_val(row, 'recurrence', 'لا يوجد')
+  if not rec_val: rec_val = 'لا يوجد'
+  
+  existing_attachments = self._task_attachment_values(row) if row else []
+  pending_files = []
+  files_to_remove = []
+
   dialog=tk.Toplevel(self);dialog.title('تعديل المهمة' if row else 'إضافة مهمة من التقويم');dialog.configure(bg='#eef3f7');dialog.transient(self);dialog.grab_set();dialog.resizable(False,False);card=tk.Frame(dialog,bg='white',highlightbackground='#d6e0e6',highlightthickness=1);card.pack(fill='both',expand=True,padx=14,pady=14);card.grid_columnconfigure(1,weight=1)
-  tk.Label(card,text='تفاصيل المهمة',bg='white',fg='#19394e',font=('Segoe UI',14,'bold')).grid(row=0,column=0,columnspan=3,sticky='e',padx=14,pady=(14,8))
-  project_locked=bool(project_locked or project is not None);title=tk.StringVar(value=(row['title'] if row else ''));due=tk.StringVar(value=(row['due_date'] or '' if row else (initial_date.isoformat() if initial_date else '')));start=tk.StringVar(value=(row['start_time'] or '' if row else (initial_start or '')));end=tk.StringVar(value=(row['end_time'] or '' if row else (initial_end or '')));priority=tk.StringVar(value={1:'عاجلة',2:'عادية',3:'منخفضة'}.get(row['priority'],'عادية') if row else 'عادية');chosen_project=project if project is not None else (row['project'] if row else (self.task_scope or ''));project_var=tk.StringVar(value=chosen_project or ('اختر مشروعًا…' if not row else ''));tags=tk.StringVar(value=(row['tags'] or '' if row else ''))
+  tk.Label(card,text='تعديل المهمة' if row else 'إضافة مهمة من التقويم',bg='white',fg='#19394e',font=('Segoe UI',14,'bold')).grid(row=0,column=0,columnspan=3,sticky='e',padx=14,pady=(14,8))
+  
+  project_locked=bool(project_locked or project is not None)
+  title=tk.StringVar(value=title_val); due=tk.StringVar(value=due_val)
+  start=tk.StringVar(value=start_val); end=tk.StringVar(value=end_val)
+  priority=tk.StringVar(value=pri_val); tags=tk.StringVar(value=tags_val)
+  project_var=tk.StringVar(value=proj_val or ('اختر مشروعًا…' if not row else ''))
+  recurrence = tk.StringVar(value=rec_val)
+
   def label(text,r):tk.Label(card,text=text,bg='white',fg='#607786',font=('Segoe UI',9)).grid(row=r,column=2,sticky='e',padx=12,pady=(5,2))
   label('عنوان المهمة',1);name=ttk.Entry(card,textvariable=title,width=42,justify='right');name.grid(row=2,column=0,columnspan=3,sticky='ew',padx=12,pady=(0,4))
   label('التاريخ',3);datebox=ttk.Entry(card,textvariable=due,width=15,justify='center');datebox.grid(row=4,column=1,padx=5,pady=(0,4),sticky='e');ttk.Button(card,text='🗓 اختر التاريخ',command=lambda:self._task_pick_date(due,initial_date,parent=dialog)).grid(row=4,column=0,padx=5,pady=(0,4),sticky='w');ttk.Button(card,text='بدون موعد',command=lambda:due.set('')).grid(row=4,column=2,padx=12,pady=(0,4),sticky='e')
   label('الوقت (اختياري)',5);timebox=tk.Frame(card,bg='white');timebox.grid(row=6,column=0,columnspan=3,sticky='ew',padx=12,pady=(0,4));self._task_time_control(timebox,start,'من');self._task_time_control(timebox,end,'إلى')
-  label('الأولوية',7);ttk.Combobox(card,textvariable=priority,values=('عاجلة','عادية','منخفضة'),state='readonly',justify='right',style='Office.TCombobox').grid(row=8,column=0,columnspan=3,sticky='ew',padx=12,pady=(0,4))
-  label('تابعة لأي مشروع؟',9);projects=self._task_project_names();project_values=([chosen_project] if project_locked and chosen_project else [])+projects;project_values=list(dict.fromkeys(project_values));project_combo=ttk.Combobox(card,textvariable=project_var,values=project_values,state='disabled' if project_locked else 'readonly',justify='right',style='Office.TCombobox');project_combo.grid(row=10,column=0,columnspan=3,sticky='ew',padx=12,pady=(0,4))
+  
+  label('الأولوية',7);ttk.Combobox(card,textvariable=priority,values=('عاجلة','عادية','منخفضة'),state='readonly',justify='right',style='Office.TCombobox').grid(row=8,column=1,columnspan=2,sticky='ew',padx=12,pady=(0,4))
+  label('التكرار',7);ttk.Combobox(card,textvariable=recurrence,values=('لا يوجد','يومياً','أسبوعياً','شهرياً'),state='readonly',width=10,justify='right',style='Office.TCombobox').grid(row=8,column=0,sticky='ew',padx=12,pady=(0,4))
+  
+  label('تابعة لأي مشروع؟',9);projects=self._task_project_names();project_values=([proj_val] if project_locked and proj_val else [])+projects;project_values=list(dict.fromkeys(project_values));project_combo=ttk.Combobox(card,textvariable=project_var,values=project_values,state='disabled' if project_locked else 'readonly',justify='right',style='Office.TCombobox');project_combo.grid(row=10,column=0,columnspan=3,sticky='ew',padx=12,pady=(0,4))
   label('هاشتاجات المهمة',11);ttk.Entry(card,textvariable=tags,justify='right').grid(row=12,column=0,columnspan=3,sticky='ew',padx=12,pady=(0,5))
-  attachment_row=tk.Frame(card,bg='white');attachment_row.grid(row=13,column=0,columnspan=3,sticky='ew',padx=12,pady=4);pending_files=[];attachment_label=tk.StringVar(value='')
-  ttk.Button(attachment_row,text='＋ إضافة ملف للمهمة',command=lambda:self._task_choose_pending_files(pending_files,attachment_label,row,parent=dialog)).pack(side='right');tk.Label(attachment_row,textvariable=attachment_label,bg='white',fg='#718491',font=('Segoe UI',8)).pack(side='right',padx=8)
-  existing_count=len(self._task_attachment_values(row)) if row else 0;attachment_label.set(f'{existing_count} مرفق محفوظ' if existing_count else 'المرفقات تتحفظ داخل مجلد المهمة في Log')
-  actions=tk.Frame(card,bg='white');actions.grid(row=14,column=0,columnspan=3,sticky='ew',padx=10,pady=(14,12))
+  
+  attachment_row=tk.Frame(card,bg='white');attachment_row.grid(row=13,column=0,columnspan=3,sticky='ew',padx=12,pady=4)
+  
+  def choose_files():
+   chosen = filedialog.askopenfilenames(parent=dialog, title='اختر ملفات للمهمة')
+   if chosen:
+    for path in chosen:
+     if path not in pending_files: pending_files.append(path)
+    render_attach_list()
+
+  def link_file():
+   proj = project_var.get()
+   if not proj or proj == 'اختر مشروعًا…': return messagebox.showwarning('المشروع', 'يرجى اختيار المشروع أولاً من القائمة.', parent=dialog)
+   project_root = (LOG / proj).resolve()
+   if not project_root.exists(): return
+   chosen = filedialog.askopenfilename(initialdir=str(project_root), parent=dialog, title='اختر ملفاً من المشروع لربطه بالمهمة')
+   if chosen:
+    try:
+     rel_path = Path(chosen).resolve().relative_to(LOG.resolve()).as_posix()
+     pending_files.append({'name': '🔗 ' + Path(chosen).name, 'path': rel_path, 'is_link': True})
+     render_attach_list()
+    except ValueError: messagebox.showwarning('مسار خاطئ', 'يجب اختيار ملف من داخل مجلد المشروع المختار.', parent=dialog)
+  
+  ttk.Button(attachment_row,text='＋ إضافة ملف',command=choose_files).pack(side='right', padx=2)
+  ttk.Button(attachment_row,text='🔗 ربط بملف هندسي',command=link_file).pack(side='right',padx=4)
+  
+  attach_list_frame = tk.Frame(card, bg='white')
+  attach_list_frame.grid(row=14, column=0, columnspan=3, sticky='ew', padx=12, pady=2)
+
+  def render_attach_list():
+   for child in attach_list_frame.winfo_children(): child.destroy()
+   for item in existing_attachments:
+    f = tk.Frame(attach_list_frame, bg='#f0f3f5'); f.pack(fill='x', pady=1)
+    tk.Label(f, text=item.get('name', Path(item['path']).name), bg='#f0f3f5', fg='#19394e', font=('Segoe UI', 8)).pack(side='right', padx=4)
+    ttk.Button(f, text='×', width=2, command=lambda i=item: remove_existing(i)).pack(side='left')
+   for p in pending_files:
+    f = tk.Frame(attach_list_frame, bg='#e9f2fb'); f.pack(fill='x', pady=1)
+    name = p.get('name') if isinstance(p, dict) else Path(p).name
+    tk.Label(f, text=name + ' (جديد)', bg='#e9f2fb', fg='#244e70', font=('Segoe UI', 8)).pack(side='right', padx=4)
+    ttk.Button(f, text='×', width=2, command=lambda p_=p: remove_pending(p_)).pack(side='left')
+
+  def remove_existing(item):
+   existing_attachments.remove(item); files_to_remove.append(item); render_attach_list()
+  def remove_pending(p):
+   pending_files.remove(p); render_attach_list()
+   
+  render_attach_list()
+
+  actions=tk.Frame(card,bg='white');actions.grid(row=15,column=0,columnspan=3,sticky='ew',padx=10,pady=(14,12))
   def save():
    name_value=title.get().strip()
    if not name_value:return messagebox.showwarning('المهام','عنوان المهمة مطلوب.',parent=dialog)
@@ -557,32 +943,45 @@ class TasksCalendarMixin:
    if (start.get() or end.get()) and not due_value:return messagebox.showwarning('موعد المهمة','حدد تاريخًا للمهمة قبل إدخال الوقت.',parent=dialog)
    if start.get() and end.get() and end.get()<=start.get():return messagebox.showwarning('وقت المهمة','وقت النهاية يجب أن يكون بعد البداية.',parent=dialog)
    if project_var.get() not in self._task_project_names():return messagebox.showwarning('المشروع','أنشئ مشروعًا أولًا، ثم اختر المشروع الذي تتبعه المهمة.',parent=dialog)
-   project_value=project_var.get();tag_values=','.join(dict.fromkeys(t.strip().lstrip('#') for t in re.split(r'[،,\s]+',tags.get()) if t.strip()));description=(row['description'] or '' if row else '');rich_value=(row['rich_text'] or '' if row else '');now=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+   project_value=project_var.get();tag_values=','.join(dict.fromkeys(t.strip().lstrip('#') for t in re.split(r'[،,\s]+',tags.get()) if t.strip()));description=(safe_val(row, 'description', ''));rich_value=(safe_val(row, 'rich_text', ''));now=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
    with connect() as c:
-    if row:c.execute('UPDATE tasks SET title=?,description=?,rich_text=?,project=?,due_date=?,start_time=?,end_time=?,priority=?,tags=?,updated_at=? WHERE id=?',(name_value,description,rich_value,project_value,due_value,start.get() or None,end.get() or None,self._task_priority_num(priority.get()),tag_values,now,row['id']))
+    if row:
+     c.execute('UPDATE tasks SET title=?,description=?,rich_text=?,project=?,due_date=?,start_time=?,end_time=?,priority=?,tags=?,recurrence=?,attachments=?,updated_at=? WHERE id=?',(name_value,description,rich_value,project_value,due_value,start.get() or None,end.get() or None,self._task_priority_num(priority.get()),tag_values,recurrence.get(),json.dumps(existing_attachments, ensure_ascii=False),now,row['id']))
+     row_folder = self._task_document_folder(row)
+     for item in files_to_remove:
+      if not item.get('is_link'):
+       try:
+        p = (LOG/item['path']).resolve()
+        if p.is_file() and p.is_relative_to(row_folder.resolve()): p.unlink()
+       except Exception: pass
     else:
-     cursor=c.execute('INSERT INTO tasks(title,description,rich_text,project,due_date,start_time,end_time,priority,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(name_value,description,rich_value,project_value,due_value,start.get() or None,end.get() or None,self._task_priority_num(priority.get()),tag_values,now,now));self.new_task_document_id=cursor.lastrowid
+     cursor=c.execute('INSERT INTO tasks(title,description,rich_text,project,due_date,start_time,end_time,priority,tags,recurrence,attachments,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(name_value,description,rich_value,project_value,due_value,start.get() or None,end.get() or None,self._task_priority_num(priority.get()),tag_values,recurrence.get(),json.dumps(existing_attachments, ensure_ascii=False),now,now));self.new_task_document_id=cursor.lastrowid
    task_id=row['id'] if row else self.new_task_document_id
    try:
     self._task_ensure_document_artifacts(task_id)
-    self._task_add_attachment_paths(task_id,pending_files)
+    if pending_files: self._task_add_attachment_paths(task_id,pending_files)
    except (OSError,ValueError,sqlite3.Error) as exc:return messagebox.showerror('حفظ ملفات المهمة',str(exc),parent=dialog)
    dialog.destroy()
    if getattr(self,'task_calendar_active',False):
     self._task_calendar_draw(preserve_scroll=True)
     if getattr(self,'task_calendar_selected_id',None)==task_id:self._task_calendar_select_task(task_id)
    if hasattr(self,'task_tree') and self.task_tree.winfo_exists():self._task_refresh_rows()
-  ttk.Button(actions,text='حفظ المهمة',command=save).pack(side='right',padx=3);ttk.Button(actions,text='إلغاء',command=dialog.destroy).pack(side='left',padx=3);dialog.bind('<Control-Return>',lambda e:(save(),'break'));dialog.update_idletasks();dialog.geometry(f'560x{max(470,dialog.winfo_reqheight())}+{max(0,self.winfo_rootx()+(self.winfo_width()-560)//2)}+{max(0,self.winfo_rooty()+(self.winfo_height()-dialog.winfo_reqheight())//2)}');name.focus_set()
-
- def _task_choose_pending_files(self,pending,label,row=None,parent=None):
-  chosen=filedialog.askopenfilenames(parent=parent or self,title='اختر ملفات للمهمة')
-  if not chosen:return
-  for path in chosen:
-   if path not in pending:pending.append(path)
-  base=len(self._task_attachment_values(row)) if row else 0
-  label.set(f'{base+len(pending)} مرفق · {len(pending)} جاهز للإضافة')
+  ttk.Button(actions,text='حفظ المهمة',command=save).pack(side='right',padx=3);ttk.Button(actions,text='إلغاء',command=dialog.destroy).pack(side='left',padx=3);dialog.bind('<Control-Return>',lambda e:(save(),'break'))
+  dialog.update_idletasks()
+  bx = self.winfo_rootx() + (self.winfo_width() - 580) // 2
+  by = self.winfo_rooty() + (self.winfo_height() - 640) // 2
+  dialog.geometry(f'580x{max(640, dialog.winfo_reqheight())}+{max(0,bx)}+{max(0,by)}')
+  name.focus_set()
 
  def show_task_calendar(self,project=None,initial_date=None):
+  try:
+   with connect() as c:
+    for col in ('subtasks', 'recurrence'):
+     try: c.execute(f'ALTER TABLE tasks ADD COLUMN {col} TEXT')
+     except sqlite3.OperationalError: pass
+  except Exception: pass
+  
+  self.task_scope = str(project or '')
   if not project and not self._task_project_names():return messagebox.showinfo('التقويم','أنشئ مشروعًا أولًا حتى تتمكن من إضافة مهام مرتبطة به.',parent=self)
   self.task_rollover_token=getattr(self,'task_rollover_token',0)+1;rollover_token=self.task_rollover_token;self.task_calendar_scope=str(project or '');self.task_calendar_date=initial_date or date.today();self.task_calendar_view=getattr(self,'task_calendar_view','month');self.task_calendar_active=True;self.task_calendar_selected_id=None;self._task_rollover_elapsed();self.clear();self.configure(bg='#eef3f7');self.title('Rasd | التقويم والمهام');head=self.header('التقويم والمهام')
   ttk.Button(head,text=('← مهام المشروع' if project else '← قائمة المهام'),command=lambda:self.show_tasks(project)).pack(side='right',padx=5,pady=12)
@@ -604,22 +1003,78 @@ class TasksCalendarMixin:
   except sqlite3.Error:return []
 
  def _task_calendar_build_preview(self):
-  panel=self.task_calendar_preview;panel.grid_columnconfigure(0,weight=1);panel.grid_rowconfigure(3,weight=1)
+  panel=self.task_calendar_preview;panel.grid_columnconfigure(0,weight=1)
   tk.Label(panel,text='معاينة المهمة',bg='#dfe7ec',fg='#19394e',font=('Segoe UI',12,'bold'),anchor='e',padx=12,pady=12).grid(row=0,column=0,sticky='ew')
   self.task_calendar_preview_title=tk.Label(panel,text='اضغط مهمة لمعاينتها',bg='white',fg='#19394e',font=('Segoe UI',12,'bold'),anchor='e',justify='right',wraplength=285);self.task_calendar_preview_title.grid(row=1,column=0,sticky='ew',padx=12,pady=12)
   self.task_calendar_preview_meta=tk.Label(panel,text='',bg='white',fg='#607786',font=('Segoe UI',9),anchor='e',justify='right');self.task_calendar_preview_meta.grid(row=2,column=0,sticky='ew',padx=12,pady=4)
-  self.task_calendar_preview_text=tk.Text(panel,height=12,wrap='word',font=('Segoe UI',9),relief='flat',bg='#f7fafb',fg='#344c5b',state='disabled');self.task_calendar_preview_text.grid(row=3,column=0,sticky='nsew',padx=9,pady=6)
+  
+  self.task_calendar_preview_subtasks_frame=tk.Frame(panel,bg='white');self.task_calendar_preview_subtasks_frame.grid(row=3,column=0,sticky='nsew',padx=10,pady=4)
+  panel.grid_rowconfigure(3,weight=1)
+  
   self.task_calendar_preview_attachments=tk.Label(panel,text='',bg='white',fg='#607786',font=('Segoe UI',8),anchor='e',justify='right',wraplength=285);self.task_calendar_preview_attachments.grid(row=4,column=0,sticky='ew',padx=10,pady=4)
-  actions=tk.Frame(panel,bg='white');actions.grid(row=5,column=0,sticky='ew',padx=9,pady=8);ttk.Button(actions,text='فتح ملف TXT',command=self._task_calendar_open_selected_text).pack(fill='x',pady=2);ttk.Button(actions,text='تعديل بيانات / الموعد',command=self._task_calendar_edit_selected).pack(fill='x',pady=2);ttk.Button(actions,text='فتح مجلد المهمة',command=self._task_calendar_open_selected_folder).pack(fill='x',pady=2);ttk.Button(actions,text='إخفاء المعاينة',command=self._task_calendar_hide_preview).pack(fill='x',pady=2)
+  self.task_calendar_preview_attachments_frame=tk.Frame(panel,bg='white');self.task_calendar_preview_attachments_frame.grid(row=5,column=0,sticky='ew',padx=8,pady=3)
+  actions=tk.Frame(panel,bg='white');actions.grid(row=6,column=0,sticky='ew',padx=9,pady=8)
+  ttk.Button(actions,text='تعديل المهمة',command=self._task_calendar_edit_selected).pack(fill='x',pady=2)
+  ttk.Button(actions,text='فتح مجلد المهمة',command=self._task_calendar_open_selected_folder).pack(fill='x',pady=2)
+  ttk.Button(actions,text='× حذف المهمة وملفاتها',command=self._task_calendar_delete_selected).pack(fill='x',pady=2)
+  ttk.Button(actions,text='إخفاء المعاينة',command=self._task_calendar_hide_preview).pack(fill='x',pady=2)
+
+ def _task_calendar_delete_selected(self):
+  task_id=getattr(self,'task_calendar_selected_id',None)
+  if not task_id:return
+  if not messagebox.askyesno('حذف المهمة','هل أنت متأكد من حذف هذه المهمة بكل ملفاتها المرفقة نهائياً؟',parent=self):return
+  self._task_delete_artifacts([task_id])
+  with connect() as c:c.execute('DELETE FROM tasks WHERE id=?',(task_id,))
+  self.task_calendar_selected_id = None
+  self._task_calendar_hide_preview()
+  self._task_calendar_draw(preserve_scroll=True)
+  if getattr(self,'task_tree',None) and self.task_tree.winfo_exists():self._task_refresh_rows()
 
  def _task_calendar_select_task(self,task_id):
-  with connect() as c:row=c.execute('SELECT * FROM tasks WHERE id=?',(task_id,)).fetchone()
+  with connect() as c:
+   try: row=c.execute('SELECT * FROM tasks WHERE id=?',(task_id,)).fetchone()
+   except sqlite3.Error: return
   if not row:return
   self.task_calendar_selected_id=int(task_id);self.task_calendar_preview.grid(row=0,column=1,sticky='nsew',padx=(8,0));self.task_calendar_layout.grid_columnconfigure(1,weight=0,minsize=320)
   self.task_calendar_preview_title.configure(text=row['title']);date_label=self._task_date_text(row['due_date']);time_label=' – '.join(x for x in (row['start_time'],row['end_time']) if x);priority={1:'عاجلة',2:'عادية',3:'منخفضة'}.get(row['priority'],'عادية');tags=' '.join('#'+x for x in (row['tags'] or '').split(',') if x);state='مكتملة' if row['completed_at'] else 'مفتوحة'
-  self.task_calendar_preview_meta.configure(text=f"المشروع: {row['project']}\nالموعد: {date_label}{(' · '+time_label) if time_label else ''}\nالأولوية: {priority} · {state}\n{tags}")
-  self.task_calendar_preview_text.configure(state='normal');self.task_calendar_preview_text.delete('1.0','end');self.task_calendar_preview_text.insert('1.0',row['description'] or 'لا توجد تفاصيل بعد.');self.task_calendar_preview_text.configure(state='disabled')
-  attachments=self._task_attachment_values(row);self.task_calendar_preview_attachments.configure(text='المرفقات: '+(', '.join(x.get('name','ملف') for x in attachments) if attachments else 'لا يوجد'))
+  try: rec_text = f" · دورية: {row['recurrence']}" if row['recurrence'] and row['recurrence']!='لا يوجد' else ""
+  except Exception: rec_text = ""
+  self.task_calendar_preview_meta.configure(text=f"المشروع: {row['project']}\nالموعد: {date_label}{(' · '+time_label) if time_label else ''}\nالأولوية: {priority} · {state}{rec_text}\n{tags}")
+  
+  for child in self.task_calendar_preview_subtasks_frame.winfo_children():child.destroy()
+  try: subtasks = json.loads(row['subtasks']) if row['subtasks'] else []
+  except Exception: subtasks = []
+  
+  completed_subs = sum(1 for s in subtasks if s.get('done'))
+  tk.Label(self.task_calendar_preview_subtasks_frame, text=f'قائمة خطوات التنفيذ ({completed_subs}/{len(subtasks)}):', bg='white', fg='#19394e', font=('Segoe UI', 9, 'bold')).pack(anchor='e', pady=(0,4))
+  for i, sub in enumerate(subtasks):
+   f = tk.Frame(self.task_calendar_preview_subtasks_frame, bg='white')
+   f.pack(fill='x', pady=2)
+   var = tk.BooleanVar(value=sub.get('done', False))
+   cb = tk.Checkbutton(f, text=sub.get('title', ''), variable=var, bg='white', activebackground='white', command=lambda idx=i, v=var: self._task_toggle_subtask(row['id'], idx, v))
+   cb.pack(side='right', fill='x', expand=True, anchor='e')
+   ttk.Button(f, text='×', width=2, command=lambda idx=i: self._task_delete_subtask(row['id'], idx)).pack(side='left', padx=1)
+   ttk.Button(f, text='✎', width=2, command=lambda idx=i: self._task_edit_subtask(row['id'], idx)).pack(side='left', padx=1)
+  
+  add_f = tk.Frame(self.task_calendar_preview_subtasks_frame, bg='white')
+  add_f.pack(fill='x', pady=6)
+  new_sub_var = tk.StringVar()
+  sub_entry = ttk.Entry(add_f, textvariable=new_sub_var, justify='right')
+  sub_entry.pack(side='right', fill='x', expand=True, padx=2)
+  sub_entry.bind('<Return>', lambda e, t=row['id'], v=new_sub_var: self._task_add_subtask(t, v, e.widget))
+  ttk.Button(add_f, text='＋ خطوة', width=7, command=lambda t=row['id'], v=new_sub_var: self._task_add_subtask(t, v, sub_entry)).pack(side='left', padx=2)
+
+  try: attachments=self._task_attachment_values(row)
+  except Exception: attachments = []
+  self.task_calendar_preview_attachments.configure(text='المرفقات والروابط: '+(str(len(attachments)) if attachments else 'لا يوجد'))
+  if hasattr(self, 'task_calendar_preview_attachments_frame'):
+   for child in self.task_calendar_preview_attachments_frame.winfo_children():child.destroy()
+   for item in attachments:
+    line=tk.Frame(self.task_calendar_preview_attachments_frame,bg='white');line.pack(fill='x',pady=1)
+    ttk.Button(line,text='×',width=3,command=lambda i=item:self._task_remove_attachment(row['id'],i)).pack(side='left', padx=1)
+    ttk.Button(line,text='👁',width=3,command=lambda i=item:self._task_open_attachment(i)).pack(side='left', padx=1)
+    btn_text = item.get('name', Path(item['path']).name)
+    tk.Label(line,text=btn_text, bg='white', fg='#3478e5', font=('Segoe UI', 8), anchor='e').pack(side='right',fill='x',expand=True)
 
  def _task_calendar_open_selected_text(self):
   if getattr(self,'task_calendar_selected_id',None):self._task_open_document(self.task_calendar_selected_id)
@@ -634,7 +1089,7 @@ class TasksCalendarMixin:
   with connect() as c:row=c.execute('SELECT * FROM tasks WHERE id=?',(task_id,)).fetchone()
   if not row:return
   try:os.startfile(str(self._task_document_folder(row)))
-  except (OSError,ValueError) as exc:messagebox.showerror('مجلد المهمة',str(exc),parent=self)
+  except Exception as exc:messagebox.showwarning('مجلد المهمة',str(exc),parent=self)
  def _task_calendar_hide_preview(self):
   self.task_calendar_preview.grid_remove();self.task_calendar_layout.grid_columnconfigure(1,weight=0,minsize=0)
 
@@ -697,11 +1152,9 @@ class TasksCalendarMixin:
    else:self._task_calendar_timeline(span,dated,scope,saved_x,saved_y)
 
  def _task_calendar_timeline(self,span,dated,scope,saved_x=0.0,saved_y=0.0):
-  """Scrollable week/day calendar with pinned time column, pinned header, and exact pixel alignment."""
   host=self.task_calendar_canvas
   hint='انقر مساحة فارغة لتحديد الوقت كل 15 دقيقة · اسحب المهمة لتغيير موعدها · اسحب الحافة السفلية لتغيير مدتها · نقرة للمعاينة ونقرتان لفتح TXT'
   tk.Label(host,text=hint,bg='#e7f1f3',fg='#466575',font=('Segoe UI',8),anchor='e').pack(side='bottom',fill='x',pady=(4,0),ipady=4)
-
   time_width=82;columns=len(span);base_width=260 if self.task_calendar_view=='week' else 180;intervals={};max_lanes=1
   for target in span:
    events=[]
@@ -724,77 +1177,47 @@ class TasksCalendarMixin:
     for item in overlap:item['lanes']=len(lane_ends)
     max_lanes=max(max_lanes,len(lane_ends))
    intervals[target.isoformat()]=events
-
-  day_width=max(base_width,min(max_lanes,8)*130);required_width=columns*day_width;timeline_height=24*60
-  header_h=78
-
+  day_width=max(base_width,min(max_lanes,8)*130);required_width=columns*day_width;timeline_height=24*60;header_h=78
   main_area=tk.Frame(host,bg='white');main_area.pack(fill='both',expand=True)
   main_area.grid_rowconfigure(1,weight=1);main_area.grid_columnconfigure(1,weight=1)
-
-  # الزاوية العلوية اليسرى الثابتة (فوق عمود الوقت مباشرة)
-  corner=tk.Frame(main_area,bg='#dfe7ec',width=time_width,height=header_h)
-  corner.grid(row=0,column=0,sticky='nsew');corner.grid_propagate(False)
+  corner=tk.Frame(main_area,bg='#dfe7ec',width=time_width,height=header_h);corner.grid(row=0,column=0,sticky='nsew');corner.grid_propagate(False)
   tk.Label(corner,text='اليوم / الوقت',bg='#dfe7ec',fg='#19394e',font=('Segoe UI',8,'bold')).place(x=0,y=0,width=time_width,height=36)
   tk.Label(corner,text='بدون ساعة',bg='#f1f5f7',fg='#607786',font=('Segoe UI',8,'bold')).place(x=0,y=36,width=time_width,height=42)
-
-  # شريط عناوين الأيام العلوي (يتحرك أفقياً فقط مع الجدول)
-  header_canvas=tk.Canvas(main_area,bg='white',height=header_h,highlightthickness=0)
-  header_canvas.grid(row=0,column=1,sticky='ew')
-
-  # عمود الساعات الثابت على اليسار (يبدأ من y=0 تماماً مثل مربعات المهام)
-  time_canvas=tk.Canvas(main_area,bg='#edf2f5',width=time_width,highlightthickness=0)
-  time_canvas.grid(row=1,column=0,sticky='ns')
-
-  # مساحة رسم الساعات والمهام
-  surface=tk.Canvas(main_area,bg='white',highlightthickness=0)
-  surface.grid(row=1,column=1,sticky='nsew')
+  header_canvas=tk.Canvas(main_area,bg='white',height=header_h,highlightthickness=0);header_canvas.grid(row=0,column=1,sticky='ew')
+  time_canvas=tk.Canvas(main_area,bg='#edf2f5',width=time_width,highlightthickness=0);time_canvas.grid(row=1,column=0,sticky='ns')
+  surface=tk.Canvas(main_area,bg='white',highlightthickness=0);surface.grid(row=1,column=1,sticky='nsew')
   self._cal_surface=surface;self._cal_time_canvas=time_canvas;self._cal_header_canvas=header_canvas
-
   def on_vscroll(*args):
    surface.yview(*args);time_canvas.yview(*args)
    try:self._cal_scroll_y=surface.yview()[0]
    except tk.TclError:pass
-
   def on_hscroll(*args):
    surface.xview(*args);header_canvas.xview(*args)
    try:self._cal_scroll_x=surface.xview()[0]
    except tk.TclError:pass
-
-  scroll=ttk.Scrollbar(main_area,orient='vertical',command=on_vscroll)
-  scroll.grid(row=1,column=2,sticky='ns')
-  horizontal=ttk.Scrollbar(main_area,orient='horizontal',command=on_hscroll)
-  horizontal.grid(row=2,column=1,sticky='ew')
-
+  scroll=ttk.Scrollbar(main_area,orient='vertical',command=on_vscroll);scroll.grid(row=1,column=2,sticky='ns')
+  horizontal=ttk.Scrollbar(main_area,orient='horizontal',command=on_hscroll);horizontal.grid(row=2,column=1,sticky='ew')
   def update_yscroll(first,last):
    scroll.set(first,last);time_canvas.yview_moveto(first)
    try:self._cal_scroll_y=float(first)
    except ValueError:pass
-
   def update_xscroll(first,last):
    horizontal.set(first,last);header_canvas.xview_moveto(first)
    try:self._cal_scroll_x=float(first)
    except ValueError:pass
-
   surface.configure(yscrollcommand=update_yscroll,xscrollcommand=update_xscroll)
-  time_canvas.configure(yscrollcommand=lambda f,l:scroll.set(f,l))
-  header_canvas.configure(xscrollcommand=lambda f,l:horizontal.set(f,l))
-
+  time_canvas.configure(yscrollcommand=lambda f,l:scroll.set(f,l));header_canvas.configure(xscrollcommand=lambda f,l:horizontal.set(f,l))
   def sync_yscroll(units):
    surface.yview_scroll(units,'units');time_canvas.yview_scroll(units,'units')
    try:self._cal_scroll_y=surface.yview()[0]
    except tk.TclError:pass
-
   def sync_xscroll(units):
    surface.xview_scroll(units,'units');header_canvas.xview_scroll(units,'units')
    try:self._cal_scroll_x=surface.xview()[0]
    except tk.TclError:pass
-
   for c in (surface,time_canvas,header_canvas):
    c._sync_yscroll=sync_yscroll;c._sync_xscroll=sync_xscroll
-
-  # بناء شريط العناوين العلوي
-  header_frame=tk.Frame(header_canvas,bg='white',height=header_h)
-  header_win=header_canvas.create_window((0,0),window=header_frame,anchor='nw',height=header_h)
+  header_frame=tk.Frame(header_canvas,bg='white',height=header_h);header_win=header_canvas.create_window((0,0),window=header_frame,anchor='nw',height=header_h)
   header_frame.grid_rowconfigure(0,minsize=36);header_frame.grid_rowconfigure(1,minsize=42)
   for col,target in enumerate(span):
    header_frame.grid_columnconfigure(col,weight=1,uniform='cal-hdr',minsize=day_width)
@@ -803,20 +1226,12 @@ class TasksCalendarMixin:
    for task in dated.get(target.isoformat(),[]):
     if not (task['start_time'] or task['end_time']):self._task_calendar_timeline_event(strip,task)
    tk.Button(strip,text='＋',command=lambda t=target:self._task_task_dialog(initial_date=t,project=scope or None),bg='#f7fafb',fg='#087e8b',relief='flat',font=('Segoe UI',8)).pack(side='left')
-
-  # بناء عمود الساعات (يبدأ من y=0 بارتفاع 60 بيكسل لكل ساعة؛ الرقم في أعلى المربع عند بداية الساعة بالظبط)
-  rail=tk.Frame(time_canvas,bg='#edf2f5',width=time_width,height=timeline_height)
-  time_canvas.create_window((0,0),window=rail,anchor='nw',width=time_width,height=timeline_height)
+  rail=tk.Frame(time_canvas,bg='#edf2f5',width=time_width,height=timeline_height);time_canvas.create_window((0,0),window=rail,anchor='nw',width=time_width,height=timeline_height)
   for hour in range(24):
-   y=hour*60
-   tk.Frame(rail,bg='#d6e0e6',height=1).place(x=0,y=y,width=time_width,height=1)
+   y=hour*60;tk.Frame(rail,bg='#d6e0e6',height=1).place(x=0,y=y,width=time_width,height=1)
    tk.Label(rail,text=f'{hour:02d}:00',bg='#edf2f5',fg='#526b7b',font=('Segoe UI',8,'bold'),anchor='n').place(x=0,y=y+2,width=time_width,height=22)
-
-  # بناء شبكة الساعات للأيام (تبدأ من y=0 تماماً مثل عمود الساعات)
-  timeline=tk.Frame(surface,bg='white',height=timeline_height)
-  window=surface.create_window((0,0),window=timeline,anchor='nw',height=timeline_height)
-  timeline.grid_rowconfigure(0,weight=1)
-  self.task_calendar_day_bodies={}
+  timeline=tk.Frame(surface,bg='white',height=timeline_height);window=surface.create_window((0,0),window=timeline,anchor='nw',height=timeline_height)
+  timeline.grid_rowconfigure(0,weight=1);self.task_calendar_day_bodies={}
   for col,target in enumerate(span):
    timeline.grid_columnconfigure(col,minsize=day_width,weight=1,uniform='timeline-day')
    day=tk.Frame(timeline,bg='white',width=day_width,height=timeline_height,highlightbackground='#d6e0e6',highlightthickness=0);day.grid(row=0,column=col,sticky='nsew',padx=1);day.grid_propagate(False);day._task_calendar_date=target;self.task_calendar_day_bodies[target.isoformat()]=day
@@ -824,27 +1239,17 @@ class TasksCalendarMixin:
     slot=tk.Frame(day,bg='white',height=60,highlightbackground='#e3e9ed',highlightthickness=1,cursor='hand2');slot.place(x=0,y=hour*60,relwidth=1,height=60);slot.bind('<Button-1>',lambda e,t=target,h=hour,s=slot:self._task_calendar_add_at_pointer(e,t,h,s,scope))
     tk.Button(slot,text='＋',command=lambda t=target,h=hour:self._task_task_dialog(initial_date=t,project=scope or None,initial_start=f'{h:02d}:00',initial_end=('23:45' if h==23 else f'{h+1:02d}:00')),bg='white',fg='#b4c3cb',activebackground='#e7f3f4',relief='flat',font=('Segoe UI',8)).place(relx=1.0,rely=1.0,anchor='se')
    for item in intervals[target.isoformat()]:self._task_calendar_timeline_event(day,item['row'],item['start'],item['end'],item['lane'],item['lanes'],target)
-
   def sync_layout(_e=None):
    try:
-    w=max(surface.winfo_width(),required_width)
-    surface.itemconfigure(window,width=w,height=timeline_height)
-    header_canvas.itemconfigure(header_win,width=w,height=header_h)
-    surface.configure(scrollregion=(0,0,w,timeline_height))
-    header_canvas.configure(scrollregion=(0,0,w,header_h))
-    time_canvas.configure(scrollregion=(0,0,time_width,timeline_height))
+    w=max(surface.winfo_width(),required_width);surface.itemconfigure(window,width=w,height=timeline_height);header_canvas.itemconfigure(header_win,width=w,height=header_h)
+    surface.configure(scrollregion=(0,0,w,timeline_height));header_canvas.configure(scrollregion=(0,0,w,header_h));time_canvas.configure(scrollregion=(0,0,time_width,timeline_height))
    except tk.TclError:pass
-
-  timeline.bind('<Configure>',sync_layout)
-  surface.bind('<Configure>',sync_layout)
-
+  timeline.bind('<Configure>',sync_layout);surface.bind('<Configure>',sync_layout)
   def restore():
    try:
-    sync_layout()
-    surface.xview_moveto(saved_x);header_canvas.xview_moveto(saved_x)
+    sync_layout();surface.xview_moveto(saved_x);header_canvas.xview_moveto(saved_x)
     surface.yview_moveto(saved_y);time_canvas.yview_moveto(saved_y)
    except tk.TclError:pass
-
   self.after_idle(restore)
 
  def _task_calendar_interval(self,row):
@@ -856,14 +1261,13 @@ class TasksCalendarMixin:
   return start_min,max(start_min+15,end_min)
 
  def _task_calendar_add_at_pointer(self,event,target,hour,slot,project):
-  """Create a timed task at the clicked quarter-hour within a day cell."""
   height=max(1,slot.winfo_height());y=max(0,min(height-1,int(event.y)));quarter=min(3,int(y*4/height));start_minutes=hour*60+quarter*15;end_minutes=min(start_minutes+60,23*60+45)
   start=f'{start_minutes//60:02d}:{start_minutes%60:02d}';end=f'{end_minutes//60:02d}:{end_minutes%60:02d}' if end_minutes>start_minutes else None
   self._task_task_dialog(initial_date=target,project=project or None,initial_start=start,initial_end=end)
 
  def _task_calendar_timeline_event(self,parent,row,start_minute=None,end_minute=None,lane=0,lanes=1,day=None):
   if start_minute is None:
-   priority=int(row['priority']);done=bool(row['completed_at']);color='#81909a' if done else {1:'#982934',2:'#244e70',3:'#725a16'}.get(priority,'#244e70');bg='#edf0f2' if done else {1:'#f8dddd',2:'#e5f0fa',3:'#fff1c9'}.get(priority,'#e5f0fa');caption=('✓ ' if done else '')+row['title'];b=tk.Button(parent,text=caption,command=lambda r=row:self._task_calendar_select_task(r['id']),bg=bg,fg=color,activebackground=bg,relief='flat',anchor='e',justify='right',wraplength=170,font=('Segoe UI',8,'bold' if priority==1 and not done else 'normal'));b.pack(fill='x',padx=2,pady=2);b.bind('<Double-Button-1>',lambda _e,r=row:(self._task_open_document(r['id']),'break'));return b
+   priority=int(row['priority']);done=bool(row['completed_at']);color='#81909a' if done else {1:'#b92f3b',2:'#3378a8',3:'#a47d1c'}.get(priority,'#3378a8');text=('✓ ' if done else '')+(row['start_time']+' · ' if row['start_time'] else '')+row['title']+('   ['+row['project']+']' if row['project'] else '');bg='#edf0f2' if done else '#fce5e5' if priority==1 else '#edf4fa' if priority==2 else '#fff5dc';b=tk.Button(parent,text=text,command=lambda r=row:self._task_calendar_select_task(r['id']),anchor='e',bg=bg,fg=color,relief='flat',font=('Segoe UI',8));b.pack(fill='x',padx=2,pady=2);b.bind('<Double-Button-1>',lambda _e,r=row:(self._task_open_document(r['id']),'break'));return b
   priority=int(row['priority']);done=bool(row['completed_at']);color='#81909a' if done else {1:'#982934',2:'#244e70',3:'#725a16'}.get(priority,'#244e70');bg='#edf0f2' if done else {1:'#f8dddd',2:'#e5f0fa',3:'#fff1c9'}.get(priority,'#e5f0fa');height=max(15,end_minute-start_minute);caption=('✓ ' if done else '')+row['title']
   if height>=32:
    start_label=f'{start_minute//60:02d}:{start_minute%60:02d}';end_label=f'{end_minute//60:02d}:{end_minute%60:02d}'

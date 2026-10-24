@@ -20,13 +20,6 @@
 - [الترخيص](#license-ar)
 - [ما القادم؟](#roadmap-ar)
 - [كلمة من المطور](#about-author-ar)
-- [About Rasd](#overview-en)
-- [Features](#features-en)
-- [Download and run](#download-en)
-- [Screenshots](#screenshots-en)
-- [Preview notes and limitations](#notes-en)
-- [What’s next?](#roadmap-en)
-- [About the developer](#about-author-en)
 
 <a id="overview-ar"></a>
 ## نبذة عن Rasd

@@ -179,7 +179,7 @@ class ScanningMixin:
  @timed_method('scan.scan_worker')
  def scan_worker(self,root):
   with self.scan_lock:
-   project=root.name;seen=set();now=stamp(datetime.now().timestamp());rows=[];errors=0;old_by_path={};changes=[]
+   project=root.name;seen=set();now=stamp(datetime.now().timestamp());write_rows=[];scanned=0;errors=0;old_by_path={};changes=[]
    def scan_error(exc):
     nonlocal errors
     errors+=1
@@ -193,15 +193,22 @@ class ScanningMixin:
      p=Path(d)/n
      if is_task_internal_artifact(p):continue
      try:
-      st=p.stat();path=str(p.resolve());r=(path,project,p.relative_to(root).as_posix(),n,p.suffix.lower(),st.st_size,st.st_mtime,None,now);rows.append(r);seen.add(path)
-      if path not in old_by_path:
+      st=p.stat();path=str(p.resolve());scanned+=1;seen.add(path)
+      old=old_by_path.get(path)
+      if old is None:
+       # ملف جديد: نكتبه فقط دون المساس بصفوف الملفات غير المتغيرة
+       write_rows.append((path,project,p.relative_to(root).as_posix(),n,p.suffix.lower(),st.st_size,st.st_mtime,None,now))
        if not first_scan:changes.append((project,path,'added',now))
-      elif old_by_path[path]!=(st.st_size,st.st_mtime):changes.append((project,path,'modified',now))
-      if len(rows)%250==0:self.scanq.put(('progress',str(root.resolve()),len(rows),None))
+      elif old!=(st.st_size,st.st_mtime):
+       # ملف تغيّر حجمه أو تاريخه فقط
+       write_rows.append((path,project,p.relative_to(root).as_posix(),n,p.suffix.lower(),st.st_size,st.st_mtime,None,now))
+       changes.append((project,path,'modified',now))
+      if scanned%250==0:self.scanq.put(('progress',str(root.resolve()),scanned,None))
      except OSError:errors+=1
    with connect() as c:
-    c.executemany('insert into files values(?,?,?,?,?,?,?,?,?) on conflict(path) do update set project=excluded.project,rel=excluded.rel,name=excluded.name,ext=excluded.ext,size=excluded.size,mtime=excluded.mtime,indexed=excluded.indexed',rows)
-    indexed_paths=[r['path'] for r in c.execute('select path from files where project=?',(project,))]
+    if write_rows:
+     c.executemany('insert into files values(?,?,?,?,?,?,?,?,?) on conflict(path) do update set project=excluded.project,rel=excluded.rel,name=excluded.name,ext=excluded.ext,size=excluded.size,mtime=excluded.mtime,indexed=excluded.indexed',write_rows)
+    indexed_paths=list(old_by_path)
     internal=[path for path in indexed_paths if is_task_internal_artifact(path)]
     missing=[path for path in indexed_paths if path not in seen and path not in internal]
     old=missing if errors==0 else []
@@ -216,7 +223,7 @@ class ScanningMixin:
     if activity_rows:c.executemany('insert into activity_log(project,action,details,path,occurred_at) values(?,?,?,?,?)',activity_rows)
     c.execute('insert into project_scan_state(project,initial_scan_done) values(?,1) on conflict(project) do update set initial_scan_done=1',(project,))
     cleanup=old+internal;c.executemany('delete from tags where path=?',[(p,) for p in cleanup]);c.executemany('delete from files where path=?',[(p,) for p in cleanup])
-   self.scanq.put(('done',str(root.resolve()),len(rows),errors))
+   self.scanq.put(('done',str(root.resolve()),scanned,errors))
 
  @timed_method('explorer.populate')
  def populate(self):

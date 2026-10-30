@@ -131,6 +131,33 @@ def classify(ext):
   if k != 'أخرى' and ext in v: return k
  return ext[1:].upper() if ext else 'بدون امتداد'
 
+HISTORY_RETENTION_DAYS = 180
+HISTORY_MAX_ROWS = {'file_changes': 200000, 'activity_log': 200000, 'file_open_history': 200000}
+
+def cleanup_history(days=HISTORY_RETENTION_DAYS, force=False):
+ """يحذف سجلات التغييرات/النشاط/الفتح القديمة مرة واحدة يوميًا للحفاظ على حجم القاعدة."""
+ today = datetime.now().strftime('%Y-%m-%d')
+ removed = 0
+ with connect() as c:
+  if not force:
+   row = c.execute("select value from app_settings where key='last_history_cleanup'").fetchone()
+   if row and row[0] == today: return 0
+  cutoff = stamp(time.time() - days * 86400)
+  for table, column in (('file_changes', 'changed_at'), ('activity_log', 'occurred_at'), ('file_open_history', 'opened_at'), ('search_history', 'searched_at')):
+   try:
+    cur = c.execute(f'DELETE FROM {table} WHERE {column} < ?', (cutoff,))
+    removed += max(0, cur.rowcount)
+   except sqlite3.OperationalError:
+    pass
+  for table, limit in HISTORY_MAX_ROWS.items():
+   try:
+    cur = c.execute(f'DELETE FROM {table} WHERE id <= (SELECT id FROM {table} ORDER BY id DESC LIMIT 1 OFFSET ?)', (limit - 1,))
+    removed += max(0, cur.rowcount)
+   except sqlite3.OperationalError:
+    pass
+  c.execute("insert or replace into app_settings(key,value) values('last_history_cleanup',?)", (today,))
+ return removed
+
 def file_icon(path, is_dir=False):
  if is_dir: return '📁'
  ext = Path(path).suffix.lower()

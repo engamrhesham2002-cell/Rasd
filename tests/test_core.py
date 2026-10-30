@@ -3,6 +3,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -53,6 +54,21 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]['name'], 'a.pdf')
         self.assertEqual(rows[0]['tags'], 'ري')
+
+    def test_cleanup_history_removes_old_rows(self):
+        old_time = '2000-01-01 00:00'
+        with storage.connect() as c:
+            c.execute("insert into file_changes(project,path,kind,changed_at) values('P','x','added',?)", (old_time,))
+            c.execute("insert into activity_log(project,action,details,path,occurred_at) values('P','a','d','x',?)", (old_time,))
+            c.execute("insert into file_open_history(project,path,opened_at) values('P','x',?)", (old_time,))
+            c.execute("insert into file_changes(project,path,kind,changed_at) values('P','y','added',?)", (storage.stamp(time.time()),))
+        removed = storage.cleanup_history(force=True)
+        with storage.connect() as c:
+            old = c.execute("select count(*) from file_changes where path='x'").fetchone()[0]
+            new = c.execute("select count(*) from file_changes where path='y'").fetchone()[0]
+        self.assertEqual(old, 0)
+        self.assertEqual(new, 1)
+        self.assertGreaterEqual(removed, 3)
 
     def test_run_once_is_idempotent(self):
         with storage.connect() as c:

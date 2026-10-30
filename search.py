@@ -296,6 +296,35 @@ class SearchMixin:
   folded=source.casefold()
   return all(term in folded for term in terms)
 
+ def search_rows_sql(self,project,term,mode,limit=10000):
+  """بديل محلي سريع للبحث: يفلتر داخل SQLite بدل تحميل كل ملفات المشروع في الذاكرة."""
+  query=(term or '').strip().casefold()
+  if not query:
+   with connect() as c:rows=[dict(r) for r in c.execute(FILE_ROWS_SQL,(project,)).fetchall()]
+   return [r for r in rows if not is_task_internal_artifact(r.get('path') or '')][:limit]
+  terms=[phrase or word for phrase,word in re.findall(r'"([^"]+)"|(\S+)',query)] or [query]
+  def like(value):
+   return '%'+value.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
+  where=['f.project=?'];params=[project]
+  for item in terms:
+   if mode=='اسم الملف':
+    where.append("lower(f.name) LIKE ? ESCAPE '\\'");params.append(like(item))
+   elif mode=='المسار':
+    where.append("lower(f.rel) LIKE ? ESCAPE '\\'");params.append(like(item))
+   elif mode=='الامتداد':
+    where.append("lower(f.ext) LIKE ? ESCAPE '\\'");params.append(like(item.lstrip('*.')))
+   elif mode=='الهاشتاج':
+    where.append("EXISTS (SELECT 1 FROM tags tg WHERE tg.path=f.path AND lower(tg.tag) LIKE ? ESCAPE '\\')");params.append(like(item))
+   else:
+    where.append("(lower(f.name) LIKE ? ESCAPE '\\' OR lower(f.rel) LIKE ? ESCAPE '\\' OR lower(f.ext) LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM tags tg WHERE tg.path=f.path AND lower(tg.tag) LIKE ? ESCAPE '\\'))")
+    params.extend([like(item)]*4)
+  sql=("SELECT f.path,f.rel,f.name,f.ext,f.size,f.mtime,f.last_open,"
+       "group_concat(t.tag,' ') tags FROM files f LEFT JOIN tags t ON t.path=f.path "
+       "WHERE "+' AND '.join(where)+" GROUP BY f.path ORDER BY f.name COLLATE NOCASE LIMIT ?")
+  params.append(int(limit))
+  with connect() as c:rows=[dict(r) for r in c.execute(sql,params).fetchall()]
+  return [r for r in rows if not is_task_internal_artifact(r.get('path') or '')]
+
  def search_task_documents(self,project,term):
   if not term:return []
   try:self._task_sync_text_documents(project)
@@ -373,12 +402,23 @@ class SearchMixin:
   except Exception as exc:
    rows=[]
    try:
-    with connect() as c:rows=[dict(r) for r in c.execute(FILE_ROWS_SQL,(root.name,)).fetchall()]
-    rows=[r for r in rows if not is_task_internal_artifact(r['path'])]
-    rows.extend(self.search_task_documents(self.project or root.name,term) if mode=='الكل' else [])
-    rows=[r for r in rows if self.search_row_matches(r,term,mode)]
-   except Exception:rows=[]
-   self.searchq.put((token,rows,f'بحث محلي احتياطي · محرك Everything غير متاح: {str(exc)[:100]}'))
+    rows=self.search_rows_sql(root.name,term,mode)
+    if mode=='الكل':
+     seen={os.path.normcase(str(r.get('path') or '')) for r in rows}
+     for item in self.search_task_documents(self.project or root.name,term):
+      key=os.path.normcase(str(item.get('path') or ''))
+      if key not in seen:seen.add(key);rows.append(item)
+   except Exception:
+    rows=[]
+    try:
+     with connect() as c:rows=[dict(r) for r in c.execute(FILE_ROWS_SQL,(root.name,)).fetchall()]
+     rows=[r for r in rows if not is_task_internal_artifact(r['path'])]
+     rows.extend(self.search_task_documents(self.project or root.name,term) if mode=='الكل' else [])
+     rows=[r for r in rows if self.search_row_matches(r,term,mode)]
+    except Exception:rows=[]
+   note='بحث محلي احتياطي · محرك Everything غير متاح: '+str(exc)[:100]
+   if len(rows)>=10000:note+=' · يعرض أول 10,000 نتيجة'
+   self.searchq.put((token,rows,note))
   finally:
    if temp_csv:
     try:temp_csv.unlink(missing_ok=True)
@@ -395,7 +435,8 @@ class SearchMixin:
    self.search_future=self.search_executor.submit(self.everything_search_worker,token,term,mode,self.root.resolve())
    return
   if term:
-   rows=[r for r in rows if self.search_row_matches(r,term,mode)]
+   try:rows=self.search_rows_sql(self.project,term,mode)
+   except Exception:rows=[r for r in rows if self.search_row_matches(r,term,mode)]
   self.render_search_rows(rows,'الفهرس المحلي'+(' · بحث بالهاشتاج' if term else ''))
 
  def render_search_rows(self,rows,source_note=''):

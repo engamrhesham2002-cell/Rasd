@@ -7,6 +7,13 @@ class PreviewRenderMixin:
  def build_preview(self,token,p,meta,page,key=None):
   if token != getattr(self, 'preview_token', 0):
    return
+  fitz=PdfReader=Document=None
+  try:import fitz
+  except ImportError:pass
+  try:from pypdf import PdfReader
+  except ImportError:pass
+  try:from docx import Document
+  except ImportError:pass
   try:
    if p.is_dir():
     try:count=sum(1 for _ in p.iterdir())
@@ -121,6 +128,9 @@ class PreviewRenderMixin:
 
  def _cad_preview(self,p):
   ext=p.suffix.lower()
+  ezdxf=None
+  try:import ezdxf
+  except ImportError:pass
   try:
    st=p.stat();cache_dir=LOG/'.preview_cache';cache_dir.mkdir(exist_ok=True);cache_key=hashlib.sha1(f'{p.resolve()}|{st.st_mtime_ns}|{st.st_size}'.encode('utf-8')).hexdigest();cached=cache_dir/f'{cache_key}.png'
    if cached.is_file():
@@ -239,6 +249,9 @@ class PreviewRenderMixin:
  def _plot_dwg_with_autocad(self,p):
   console=self._find_accoreconsole()
   if not console:return None,'accoreconsole غير موجود'
+  fitz=None
+  try:import fitz
+  except ImportError:pass
   workdir=Path(tempfile.mkdtemp(prefix='rasd_dwg_'))
   try:
    src=workdir/'input.dwg';out_png=workdir/'preview.png';out_pdf=workdir/'preview.pdf';scr=workdir/'render.scr'

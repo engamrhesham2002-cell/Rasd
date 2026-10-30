@@ -1,0 +1,4 @@
+# Rasd v0.43 - أدوات التطوير والبناء
+-r requirements.txt
+pyinstaller==6.22.3
+pytest>=8.0

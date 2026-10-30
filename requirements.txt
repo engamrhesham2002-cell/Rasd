@@ -1,0 +1,10 @@
+# Rasd v0.43 - مكتبات التشغيل (النسخ مطابقة للبيئة الحالية)
+pillow==13.0.0
+PyMuPDF==1.26.7
+openpyxl==3.1.5
+python-docx==1.2.0
+xlrd==2.0.2
+pyxlsb==1.0.10
+ezdxf==1.4.5
+pypdf==6.21.3
+Send2Trash>=1.8.0

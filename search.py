@@ -2,6 +2,7 @@
 from common import *
 from update_utils import *
 from storage import *
+from perf import timed_method
 
 class SearchMixin:
  def show_search_page(self, initial_query=None):
@@ -43,7 +44,7 @@ class SearchMixin:
   
   with connect() as c:
    state=c.execute('select query,mode,file_type from project_search_state where project=?',(self.project,)).fetchone()
-   self.search_cache=c.execute("select f.*,group_concat(t.tag, ' ') tags from files f left join tags t on t.path=f.path where f.project=? group by f.path",(self.project,)).fetchall()
+   self.search_cache=c.execute(FILE_ROWS_SQL,(self.project,)).fetchall()
    saved=c.execute('select query,mode from saved_searches where project=? order by created desc',(self.project,)).fetchall()
    history=c.execute('select query,mode from search_history where project=? order by searched_at desc limit 20',(self.project,)).fetchall()
   
@@ -103,8 +104,9 @@ class SearchMixin:
   if p.is_file() and hasattr(self, 'manage_file_links'):
    self.manage_file_links(p)
 
+ @timed_method('search.refresh_cache')
  def refresh_search_cache(self):
-  with connect() as c:self.search_cache=c.execute("select f.*,group_concat(t.tag, ' ') tags from files f left join tags t on t.path=f.path where f.project=? group by f.path",(self.project,)).fetchall()
+  with connect() as c:self.search_cache=c.execute(FILE_ROWS_SQL,(self.project,)).fetchall()
 
  def save_search_state(self):
   if not hasattr(self,'search_query') or not hasattr(self,'search_page') or not self.search_page.winfo_exists():return
@@ -344,7 +346,7 @@ class SearchMixin:
        except (OSError,ValueError):continue
        if p.is_file() and not is_task_internal_artifact(p):paths.append(p)
        break
-   with connect() as c:indexed=c.execute("select f.*,group_concat(t.tag, ' ') tags from files f left join tags t on t.path=f.path where f.project=? group by f.path",(root.name,)).fetchall()
+   with connect() as c:indexed=c.execute(FILE_ROWS_SQL,(root.name,)).fetchall()
    by_path={os.path.normcase(r['path']):dict(r) for r in indexed};rows=[];seen=set()
    for p in paths:
     key=os.path.normcase(str(p))
@@ -371,7 +373,7 @@ class SearchMixin:
   except Exception as exc:
    rows=[]
    try:
-    with connect() as c:rows=[dict(r) for r in c.execute("select f.*,group_concat(t.tag, ' ') tags from files f left join tags t on t.path=f.path where f.project=? group by f.path",(root.name,)).fetchall()]
+    with connect() as c:rows=[dict(r) for r in c.execute(FILE_ROWS_SQL,(root.name,)).fetchall()]
     rows=[r for r in rows if not is_task_internal_artifact(r['path'])]
     rows.extend(self.search_task_documents(self.project or root.name,term) if mode=='الكل' else [])
     rows=[r for r in rows if self.search_row_matches(r,term,mode)]
@@ -382,6 +384,7 @@ class SearchMixin:
     try:temp_csv.unlink(missing_ok=True)
     except OSError:pass
 
+ @timed_method('search.render_results')
  def render_search_results(self,*_):
   if not hasattr(self,'search_nb') or not self.search_nb.winfo_exists():return
   term=self.search_query.get().strip().casefold();mode=self.search_mode.get();rows=[dict(r) for r in getattr(self,'search_cache',[])]

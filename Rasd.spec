@@ -3,7 +3,7 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [('Assets', 'Assets'), ('Everything', 'Everything')]
 binaries = []
-hiddenimports = []
+hiddenimports = ['openpyxl', 'docx', 'xlrd', 'pyxlsb', 'ezdxf', 'pypdf', 'send2trash']
 tmp_ret = collect_all('pymupdf')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 

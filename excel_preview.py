@@ -72,7 +72,8 @@ class ExcelPreviewMixin:
    note=f'ملف CSV · {len(rows):,} صف معروض'
    return names,sheet_name,rows,start_row,total_rows,has_more,note
   if ext=='.xls':
-   if not xlrd:raise RuntimeError('مكتبة xlrd غير متاحة لمعاينة ملفات XLS القديمة')
+   try:import xlrd
+   except ImportError:raise RuntimeError('مكتبة xlrd غير متاحة لمعاينة ملفات XLS القديمة')
    book=xlrd.open_workbook(str(p),on_demand=True)
    try:
     names=list(book.sheet_names()) or ['Sheet1'];sheet_name=requested_sheet if requested_sheet in names else names[0];sh=book.sheet_by_name(sheet_name)
@@ -89,7 +90,8 @@ class ExcelPreviewMixin:
     except Exception:pass
    return names,sheet_name,rows,start_row,total_rows,has_more,f'الشيت: {sheet_name} · {len(names)} شيت'
   if ext=='.xlsb':
-   if not open_xlsb_workbook:raise RuntimeError('مكتبة pyxlsb غير متاحة لمعاينة ملفات XLSB')
+   try:from pyxlsb import open_workbook as open_xlsb_workbook
+   except ImportError:raise RuntimeError('مكتبة pyxlsb غير متاحة لمعاينة ملفات XLSB')
    with open_xlsb_workbook(str(p)) as wb:
     names=list(wb.sheets) or ['Sheet1'];sheet_name=requested_sheet if requested_sheet in names else names[0]
     with wb.get_sheet(sheet_name) as sh:
@@ -103,7 +105,8 @@ class ExcelPreviewMixin:
        else:has_more=True
       if r_idx>5000:break
    return names,sheet_name,rows,start_row,total_rows,has_more,f'الشيت: {sheet_name} · {len(names)} شيت'
-  if not openpyxl:raise RuntimeError('مكتبة openpyxl غير متاحة لمعاينة ملفات Excel')
+  try:import openpyxl
+  except ImportError:raise RuntimeError('مكتبة openpyxl غير متاحة لمعاينة ملفات Excel')
   wb=openpyxl.load_workbook(str(p),read_only=True,data_only=True)
   try:
    names=list(wb.sheetnames) or ['Sheet1']

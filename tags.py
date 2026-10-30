@@ -426,6 +426,6 @@ class TagsMixin:
   changed=[p for p in paths if old.get(str(p.resolve()))]
   if changed:self.log_activity('مسح هاشتاجات الملف',f'مسح الهاشتاجات من {len(changed):,} ملف · '+', '.join(p.name for p in changed),path=changed[0] if len(changed)==1 else None)
   if hasattr(self,'search_page') and self.search_page.winfo_exists() and self.search_page.winfo_ismapped():
-   with connect() as c:self.search_cache=c.execute("select f.*,group_concat(t.tag, ' ') tags from files f left join tags t on t.path=f.path where f.project=? group by f.path",(self.project,)).fetchall()
+   with connect() as c:self.search_cache=c.execute(FILE_ROWS_SQL,(self.project,)).fetchall()
    self.render_search_results()
   self.populate()

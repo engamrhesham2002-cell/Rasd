@@ -2,6 +2,7 @@
 from common import *
 from update_utils import *
 from storage import *
+from perf import timed_method
 
 class ScanningMixin:
  def _get_active_background_task_name(self):
@@ -175,6 +176,7 @@ class ScanningMixin:
     if self.winfo_exists():self._poll_after_id=self.after(120,self.poll_queue)
    except tk.TclError:pass
 
+ @timed_method('scan.scan_worker')
  def scan_worker(self,root):
   with self.scan_lock:
    project=root.name;seen=set();now=stamp(datetime.now().timestamp());rows=[];errors=0;old_by_path={};changes=[]
@@ -216,6 +218,7 @@ class ScanningMixin:
     cleanup=old+internal;c.executemany('delete from tags where path=?',[(p,) for p in cleanup]);c.executemany('delete from files where path=?',[(p,) for p in cleanup])
    self.scanq.put(('done',str(root.resolve()),len(rows),errors))
 
+ @timed_method('explorer.populate')
  def populate(self):
   if not hasattr(self,'file_tree') or not self.current:return
   self.refresh_tag_filters()
@@ -233,6 +236,10 @@ class ScanningMixin:
    linked_paths_set = set()
    favorite_paths_set = set()
 
+  data=[];sort_meta={}
+  def add(item_id,values,is_folder,size=0,mtime=0):
+   data.append((item_id,values,is_folder));sort_meta[item_id]=(size or 0,mtime or 0)
+
   if self.view_mode!='files':
    rows=self._collection_rows();data=[];self.activity_rows={}
    for row_item in rows:
@@ -249,21 +256,21 @@ class ScanningMixin:
      occ_raw = str(r.get('occurred_at') or '')
      occ_fmt = occ_raw[:16] if occ_raw else '—'
      event={'id':r.get('id'),'action':r.get('action'),'details':r.get('details'),'path':target,'occurred_at':occ_raw,'icon':self.activity_row_icon(r) if hasattr(self,'activity_row_icon') else None};self.activity_rows[iid]=event
-     data.append((iid,(RLM+str(r.get('details') or ''),RLM+str(r.get('action') or ''),'—','—',' '+occ_fmt+' ','',' '+location),False));continue
+     add(iid,(RLM+str(r.get('details') or ''),RLM+str(r.get('action') or ''),'—','—',' '+occ_fmt+' ','',' '+location),False);continue
     if not r.get('path'):continue
     if self.view_mode=='changes' and not r.get('name'):
-     old=Path(r.get('path'));name=f"[محذوف] {old.name}";data.append((r.get('path'),(name,old.suffix.lower() or 'ملف','—','—',r.get('changed_at') or '—','',old.as_posix()),False));continue
+     old=Path(r.get('path'));name=f"[محذوف] {old.name}";add(r.get('path'),(name,old.suffix.lower() or 'ملف','—','—',r.get('changed_at') or '—','',old.as_posix()),False);continue
     if not Path(r.get('path')).exists() and self.view_mode != 'recycle_bin':continue
     if r.get('kind')=='folder' and Path(r.get('path')).is_dir():
-     p=Path(r.get('path'));rel=p.relative_to(self.root).as_posix();data.append((str(p.resolve()),(p.name,RLM+'مجلد',sizefmt(self.indexed_folder_size(p,directory_sizes)),' '+stamp(p.stat().st_mtime)+' ','—',r.get('tags') or '',' '+rel),True));continue
+     p=Path(r.get('path'));rel=p.relative_to(self.root).as_posix();st=p.stat();folder_size=self.indexed_folder_size(p,directory_sizes);add(str(p.resolve()),(p.name,RLM+'مجلد',sizefmt(folder_size),' '+stamp(st.st_mtime)+' ','—',r.get('tags') or '',' '+rel),True,folder_size,st.st_mtime);continue
     tags=r.get('tags') or ''
     if not self._discipline_match(tags):continue
     name=r.get('name');opened_raw=r.get('last_open');opened=(' '+opened_raw[:16]+' ' if opened_raw else '—');modified=r.get('mtime') or 0
     if self.view_mode=='changes':name=f"[{r.get('change_kind') or 'changed'}] {name}";opened=r.get('changed_at') or opened
-    data.append((r.get('path'),(name,r.get('ext') or (RLM+'ملف'),sizefmt(r.get('size') or 0),' '+stamp(modified)+' ',opened,tags,r.get('rel') or ''),False))
+    add(r.get('path'),(name,r.get('ext') or (RLM+'ملف'),sizefmt(r.get('size') or 0),' '+stamp(modified)+' ',opened,tags,r.get('rel') or ''),False,r.get('size') or 0,modified)
   else:
    with connect() as c:
-    allrows=c.execute("select f.*,group_concat(t.tag, ' ') tags from files f left join tags t on t.path=f.path where f.project=? group by f.path",(self.project,)).fetchall()
+    allrows=c.execute(FILE_ROWS_SQL,(self.project,)).fetchall()
     folderrows=c.execute("select path,group_concat(tag, ' ') tags from folder_tags where project=? group by path",(self.project,)).fetchall()
     rowmap={r['path']:r for r in allrows};foldermap={r['path']:r['tags'] or '' for r in folderrows}
    self._project_files_mem_cache = (self.project, [(r['path'], r['name']) for r in allrows if r['path'] and r['name']])
@@ -285,30 +292,33 @@ class ScanningMixin:
      tags=(foldermap.get(rel, '') if isdir else ((r['tags'] or '') if r else ''));opened=((' '+r['last_open'][:16]+' ') if r and r['last_open'] else '—')
      if not isdir and self.folder_group!='الكل' and classify(p.suffix.lower())!=self.folder_group:continue
      if not isdir and not self._discipline_match(tags):continue
-     data.append((str(p.resolve()),(p.name,(RLM+'مجلد' if isdir else p.suffix.lower() or (RLM+'ملف')),(sizefmt(directory_sizes.get(rel,0)) if isdir else sizefmt(st.st_size)),' '+stamp(st.st_mtime)+' ',opened,tags,rel),isdir))
+     add(str(p.resolve()),(p.name,(RLM+'مجلد' if isdir else p.suffix.lower() or (RLM+'ملف')),(sizefmt(directory_sizes.get(rel,0)) if isdir else sizefmt(st.st_size)),' '+stamp(st.st_mtime)+' ',opened,tags,rel),isdir,(directory_sizes.get(rel,0) if isdir else st.st_size),st.st_mtime)
     if self.folder_group!='الكل':
      prefix='' if self.current.resolve()==self.root.resolve() else self.current.relative_to(self.root).as_posix().rstrip('/')+'/'
      data=[]
      for r in allrows:
       if is_task_internal_artifact(r['path']):continue
-      if r['rel'].startswith(prefix) and classify(r['ext'] or '')==self.folder_group and self._discipline_match(r['tags']):data.append((r['path'],(r['name'],r['ext'] or (RLM+'ملف'),sizefmt(r['size']),' '+stamp(r['mtime'])+' ',(' '+r['last_open'][:16]+' ') if r['last_open'] else '—',r['tags'] or '',r['rel']),False))
+      if r['rel'].startswith(prefix) and classify(r['ext'] or '')==self.folder_group and self._discipline_match(r['tags']):add(r['path'],(r['name'],r['ext'] or (RLM+'ملف'),sizefmt(r['size']),' '+stamp(r['mtime'])+' ',(' '+r['last_open'][:16]+' ') if r['last_open'] else '—',r['tags'] or '',r['rel']),False,r['size'] or 0,r['mtime'] or 0)
    else:
     for r in allrows:
      if is_task_internal_artifact(r['path']):continue
      if self.project_group!='الكل' and classify(r['ext'] or '')!=self.project_group:continue
      if not self._discipline_match(r['tags']):continue
-     data.append((r['path'],(r['name'],r['ext'] or (RLM+'ملف'),sizefmt(r['size']),' '+stamp(r['mtime'])+' ',(' '+r['last_open'][:16]+' ') if r['last_open'] else '—',r['tags'] or '',r['rel']),False))
+     add(r['path'],(r['name'],r['ext'] or (RLM+'ملف'),sizefmt(r['size']),' '+stamp(r['mtime'])+' ',(' '+r['last_open'][:16]+' ') if r['last_open'] else '—',r['tags'] or '',r['rel']),False,r['size'] or 0,r['mtime'] or 0)
   sort_col=self.opened_sort_col if self.view_mode=='opened' else self.sort_col
   sort_desc=self.opened_sort_desc if self.view_mode=='opened' else self.sort_desc
-  if sort_col=='name':idx=0;key=lambda x:x[1][idx].casefold()
-  elif sort_col=='type':idx=1;key=lambda x:x[1][idx].casefold()
-  elif sort_col=='size':key=lambda x:Path(x[0]).stat().st_size if Path(x[0]).is_file() else self.indexed_folder_size(x[0],directory_sizes) if Path(x[0]).is_dir() else -1
-  elif sort_col=='mtime':key=lambda x:Path(x[0]).stat().st_mtime if Path(x[0]).exists() else -1
-  elif sort_col=='opened':idx=4;key=lambda x:x[1][idx]
-  elif sort_col=='tags':idx=5;key=lambda x:x[1][idx].casefold()
-  else:idx=6;key=lambda x:x[1][idx].casefold()
+  if sort_col=='name':key=lambda x:x[1][0].casefold()
+  elif sort_col=='type':key=lambda x:x[1][1].casefold()
+  elif sort_col=='size':key=lambda x:sort_meta.get(x[0],(0,0))[0]
+  elif sort_col=='mtime':key=lambda x:sort_meta.get(x[0],(0,0))[1]
+  elif sort_col=='opened':key=lambda x:x[1][4]
+  elif sort_col=='tags':key=lambda x:x[1][5].casefold()
+  else:key=lambda x:x[1][6].casefold()
   if self.view_mode!='changes':
-   try:data.sort(key=lambda x:(not x[2],key(x)),reverse=sort_desc)
+   try:
+    folders=[x for x in data if x[2]];files=[x for x in data if not x[2]]
+    folders.sort(key=key,reverse=sort_desc);files.sort(key=key,reverse=sort_desc)
+    data=folders+files
    except Exception:pass
    
   configured_tags={
@@ -396,9 +406,16 @@ class ScanningMixin:
    c.execute('insert or ignore into file_open_history(project,path,opened_at) values(?,?,?)',(self.project,db_path,opened_at))
   
   self.log_activity('فتح ملف',f'تم فتح الملف «{p.name}»',path=p)
-  self.populate()
+  tree=getattr(self,'file_tree',None)
+  if tree is not None:
+   try:
+    if tree.winfo_exists():
+     for iid in (db_path,key):
+      if tree.exists(iid):
+       tree.set(iid,'opened',' '+opened_at[:16]+' ');break
+   except tk.TclError:pass
   if hasattr(self,'search_page') and self.search_page.winfo_exists() and self.search_page.winfo_ismapped():
-   with connect() as c:self.search_cache=c.execute("select f.*,group_concat(t.tag, ' ') tags from files f left join tags t on t.path=f.path where f.project=? group by f.path",(self.project,)).fetchall()
+   with connect() as c:self.search_cache=c.execute(FILE_ROWS_SQL,(self.project,)).fetchall()
    self.render_search_results()
 
  def selected_path(self):

@@ -2,6 +2,7 @@
 from common import *
 from update_utils import *
 from storage import *
+from perf import timed_method
 import shutil
 
 class HomeMixin:
@@ -277,17 +278,30 @@ class HomeMixin:
   self._home_refresh_job=None
   cards=getattr(self,'cards',None)
   try:
-   if not getattr(self,'project','') and cards and cards.winfo_exists() and cards.winfo_ismapped():
-    self.after_idle(self.render_projects)
+   if getattr(self,'project','') or not cards or not cards.winfo_exists() or not cards.winfo_ismapped():return
+   width=max(720,self.winfo_width() if self.winfo_width()>200 else self.winfo_screenwidth())
+   columns=max(1,min(4,max(280,width-84)//280))
+   if columns==getattr(self,'project_columns',0):
+    if hasattr(self,'cards_canvas') and self.cards_canvas.winfo_exists():
+     cw=max(100,self.cards_canvas.winfo_width());ch=max(100,self.cards_canvas.winfo_height());req_h=self.cards.winfo_reqheight()
+     self.cards_canvas.configure(scrollregion=(0,0,cw,max(ch,req_h)))
+    return
+   self.after_idle(self.render_projects)
   except tk.TclError:pass
 
+ @timed_method('home.render_projects')
  def render_projects(self):
   for w in self.cards.winfo_children():w.destroy()
   
+  tag_map={};cover_map={}
   with connect() as c:
    counts={r['project']:(r['n'],r['latest']) for r in c.execute('select project,count(*) n,max(mtime) latest from files group by project')}
    fav_rows = c.execute('SELECT project FROM favorites WHERE kind="folder"').fetchall()
    favorite_projects = {r['project'] for r in fav_rows}
+   for r in c.execute('select f.project,t.tag,count(*) n from tags t join files f on f.path=t.path group by f.project,t.tag order by f.project,n desc'):
+    tag_map.setdefault(r['project'],[]).append(r['tag'])
+   for r in c.execute("select project,min(path) path from files where ext in ('.png','.jpg','.jpeg','.bmp','.tif','.tiff') group by project"):
+    cover_map[r['project']]=r['path']
 
   projects=[p for p in LOG.iterdir() if p.is_dir() and not p.name.startswith('.') and is_project_path(p)]
   mode=getattr(self,'home_filter_mode','all')
@@ -328,8 +342,11 @@ class HomeMixin:
   for i,p in enumerate(projects):
    if p.name not in self.selected_home_projects: self.selected_home_projects[p.name] = tk.BooleanVar(value=False)
    indexed=counts.get(p.name);n=indexed[0] if indexed else None;count_text=f'{n:,} ملف' if n is not None else 'فهرسة جارية...'
+   image_path=cover_map.get(p.name)
    try:
-    child_count=sum(1 for x in p.iterdir() if x.is_dir() and not x.name.startswith('.'))
+    children=list(p.iterdir())
+    child_count=sum(1 for x in children if x.is_dir() and not x.name.startswith('.'))
+    if not image_path:image_path=next((x for x in children if x.is_file() and x.suffix.lower() in ('.png','.jpg','.jpeg','.bmp','.tif','.tiff')),None)
     latest=indexed[1] if indexed and indexed[1] else p.stat().st_mtime;modified=datetime.fromtimestamp(latest).strftime('%d-%m-%Y')
    except OSError:child_count=0;modified='—'
    
@@ -349,10 +366,6 @@ class HomeMixin:
    chk = tk.Checkbutton(box, variable=self.selected_home_projects[p.name], bg=BG_PANEL, activebackground=BG_PANEL, selectcolor=BG_VOID, cursor='hand2', command=self.update_bulk_action_bar)
    chk.place(relx=0.97, rely=0.03, anchor='ne')
 
-   image_path=None
-   try:image_path=next(x for x in p.rglob('*') if x.is_file() and x.suffix.lower() in ('.png','.jpg','.jpeg','.bmp','.tif','.tiff'))
-   except (StopIteration,OSError):pass
-   
    try:
     if image_path:
      with Image.open(image_path) as src:thumb=ImageOps.fit(src.convert('RGB'),(430,175),method=Image.Resampling.LANCZOS)
@@ -371,10 +384,7 @@ class HomeMixin:
    tk.Label(details,text=RLM+p.name,font=(TERM_FONT,11,'bold'),fg=FG_PRIMARY,bg=BG_PANEL,anchor='e').pack(anchor='e',fill='x')
    tk.Label(details,text=RLM+f'عدد الملفات: {count_text}   ·   آخر تعديل: {modified}',font=(TERM_FONT,8),fg=FG_MUTED,bg=BG_PANEL,anchor='e').pack(anchor='e',fill='x',pady=(4,0))
    
-   tags=[]
-   try:
-    with connect() as c:tags=[r['tag'] for r in c.execute('select t.tag,count(*) n from tags t join files f on f.path=t.path where f.project=? group by t.tag order by n desc limit 3',(p.name,))]
-   except Exception:pass
+   tags=tag_map.get(p.name,[])[:3]
    
    tagrow=tk.Frame(box,bg=BG_PANEL);tagrow.pack(fill='x',padx=8,pady=(7,10))
    if tags:
@@ -427,6 +437,7 @@ class HomeMixin:
    else:
     c.execute("INSERT INTO activity_log(project,action,details,path,occurred_at) VALUES(?,?,?,?,?)", (project, str(action), str(details), target, when))
 
+ @timed_method('home.open_project')
  def open_project(self,root):
   root=Path(root).resolve()
   if not is_project_path(root) or not root.is_dir():
@@ -506,7 +517,11 @@ class HomeMixin:
       while not stop.is_set():
        result=kernel.WaitForSingleObject(handle,500)
        if result==0:
-        if self.root==root:threading.Thread(target=self.scan_worker,args=(root,),daemon=True).start()
+        time.sleep(1.2)
+        if stop.is_set():break
+        if self.root==root:
+         try:self.scan_worker(root)
+         except Exception:pass
         if not kernel.FindNextChangeNotification(handle):break
        elif result==0xFFFFFFFF:break
      finally:kernel.FindCloseChangeNotification(handle)
@@ -531,4 +546,6 @@ class HomeMixin:
    current=signature()
    if current!=previous:
     previous=current
-    if self.root==root:threading.Thread(target=self.scan_worker,args=(root,),daemon=True).start()
+    if self.root==root:
+     try:self.scan_worker(root)
+     except Exception:pass

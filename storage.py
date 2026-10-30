@@ -36,11 +36,15 @@ def is_task_internal_artifact(path):
 GROUPS = {'لوحات CAD': {'.dwg', '.dxf'}, 'PDF': {'.pdf'}, 'Excel': {'.xlsx', '.xls', '.xlsm', '.xlsb', '.csv', '.tsv'}, 'Word': {'.doc', '.docx'}, 'الصور': {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff'}, 'أخرى': set()}
 EXCEL_PREVIEW_PAGE_SIZE = 100
 
+# استعلام موحّد لصفوف الملفات + هاشتاجاتها (أعمدة محددة بدل f.* لتحسين الأداء)
+FILE_ROWS_SQL = ("SELECT f.path,f.rel,f.name,f.ext,f.size,f.mtime,f.last_open,"
+                 "group_concat(t.tag,' ') tags FROM files f "
+                 "LEFT JOIN tags t ON t.path=f.path WHERE f.project=? GROUP BY f.path")
+
 @contextmanager
 def connect():
- # تم زيادة وقت الانتظار وتفعيل أوامر متقدمة لمنع خطأ database is locked نهائياً
+ # WAL يُفعّل مرة واحدة عند بدء التشغيل (إعداد دائم على مستوى الملف)
  c = sqlite3.connect(DB, timeout=30.0); c.row_factory = sqlite3.Row
- c.execute('PRAGMA journal_mode=WAL;')
  c.execute('PRAGMA synchronous=NORMAL;')
  c.execute('PRAGMA busy_timeout=30000;') # إجبار المحرك على الانتظار 30 ثانية قبل رفض أي أمر
  try:
@@ -50,13 +54,36 @@ def connect():
  finally:
   c.close()
 
+
+def _enable_wal():
+ _c = sqlite3.connect(DB, timeout=30.0)
+ try:
+  _c.execute('PRAGMA journal_mode=WAL;')
+ finally:
+  _c.close()
+
+
+def _run_once(conn, key, sql, params=()):
+ """ينفّذ migration ثقيلة مرة واحدة فقط ويسجلها في app_settings."""
+ if conn.execute('SELECT 1 FROM app_settings WHERE key=?', (key,)).fetchone():
+  return
+ conn.execute(sql, params)
+ conn.execute('INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)', (key, '1'))
+
+
+_enable_wal()
+
+
 with connect() as c:
  c.executescript('CREATE TABLE IF NOT EXISTS files(path TEXT PRIMARY KEY,project TEXT,rel TEXT,name TEXT,ext TEXT,size INTEGER,mtime REAL,last_open TEXT,indexed TEXT); CREATE TABLE IF NOT EXISTS tags(path TEXT,tag TEXT,PRIMARY KEY(path,tag)); CREATE TABLE IF NOT EXISTS file_tag_catalog(project TEXT,tag TEXT,created TEXT,PRIMARY KEY(project,tag)); CREATE TABLE IF NOT EXISTS folder_tags(project TEXT,path TEXT,tag TEXT,created TEXT,PRIMARY KEY(project,path,tag)); CREATE TABLE IF NOT EXISTS extension_colors(ext TEXT PRIMARY KEY,accent TEXT UNIQUE,soft TEXT); CREATE TABLE IF NOT EXISTS search_history(project TEXT,query TEXT,mode TEXT,searched_at TEXT,PRIMARY KEY(project,query,mode)); CREATE TABLE IF NOT EXISTS saved_searches(project TEXT,query TEXT,mode TEXT,created TEXT,PRIMARY KEY(project,query,mode)); CREATE TABLE IF NOT EXISTS project_search_state(project TEXT PRIMARY KEY,query TEXT,mode TEXT,file_type TEXT); CREATE TABLE IF NOT EXISTS favorites(project TEXT,path TEXT,kind TEXT,created TEXT,PRIMARY KEY(project,path)); CREATE TABLE IF NOT EXISTS project_view_state(project TEXT PRIMARY KEY,current_rel TEXT,mode TEXT,folder_filter TEXT,project_filter TEXT,discipline TEXT,sort_col TEXT,sort_desc INTEGER,column_widths TEXT); CREATE TABLE IF NOT EXISTS file_changes(id INTEGER PRIMARY KEY AUTOINCREMENT,project TEXT,path TEXT,kind TEXT,changed_at TEXT); CREATE INDEX IF NOT EXISTS idx_changes_project ON file_changes(project,changed_at); CREATE TABLE IF NOT EXISTS project_visits(project TEXT PRIMARY KEY,last_visit TEXT); CREATE TABLE IF NOT EXISTS file_open_history(id INTEGER PRIMARY KEY AUTOINCREMENT,project TEXT NOT NULL,path TEXT NOT NULL,opened_at TEXT NOT NULL,UNIQUE(project,path,opened_at)); CREATE INDEX IF NOT EXISTS idx_open_history_project ON file_open_history(project,opened_at); CREATE TABLE IF NOT EXISTS project_scan_state(project TEXT PRIMARY KEY,initial_scan_done INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS activity_log(id INTEGER PRIMARY KEY AUTOINCREMENT,project TEXT NOT NULL,action TEXT NOT NULL,details TEXT NOT NULL,path TEXT,occurred_at TEXT NOT NULL); CREATE TABLE IF NOT EXISTS tasks(id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,description TEXT NOT NULL DEFAULT \'\',project TEXT NOT NULL DEFAULT \'\',due_date TEXT,start_time TEXT,end_time TEXT,priority INTEGER NOT NULL DEFAULT 2,tags TEXT NOT NULL DEFAULT \'\',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,completed_at TEXT,attachments TEXT NOT NULL DEFAULT \'[]\',document_rel TEXT); CREATE INDEX IF NOT EXISTS idx_tasks_project_due ON tasks(project,due_date,completed_at); CREATE INDEX IF NOT EXISTS idx_tasks_completed ON tasks(completed_at,updated_at); CREATE TABLE IF NOT EXISTS workspace_tools(id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, title TEXT NOT NULL, kind TEXT NOT NULL, path TEXT NOT NULL);')
  c.executescript('''
  CREATE TRIGGER IF NOT EXISTS ignore_dot_tasks_insert BEFORE INSERT ON files WHEN NEW.rel = '.tasks' OR NEW.rel LIKE '.tasks/%' OR NEW.rel LIKE '%/.tasks/%' OR NEW.rel LIKE '%/.tasks' BEGIN SELECT RAISE(IGNORE); END;
  CREATE TRIGGER IF NOT EXISTS ignore_dot_tasks_update BEFORE UPDATE ON files WHEN NEW.rel = '.tasks' OR NEW.rel LIKE '.tasks/%' OR NEW.rel LIKE '%/.tasks/%' OR NEW.rel LIKE '%/.tasks' BEGIN SELECT RAISE(IGNORE); END;
  ''')
- c.execute("DELETE FROM files WHERE rel = '.tasks' OR rel LIKE '.tasks/%' OR rel LIKE '%/.tasks/%' OR rel LIKE '%/.tasks'")
+ c.execute('CREATE INDEX IF NOT EXISTS idx_files_project_rel ON files(project, rel)')
+ c.execute('CREATE INDEX IF NOT EXISTS idx_activity_project_time ON activity_log(project, occurred_at)')
+ c.execute('CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
+ _run_once(c, 'migration_cleanup_dot_tasks_v1', "DELETE FROM files WHERE rel = '.tasks' OR rel LIKE '.tasks/%' OR rel LIKE '%/.tasks/%' OR rel LIKE '%/.tasks'")
 
 try:
  with connect() as c:
@@ -77,9 +104,7 @@ with connect() as c:
  c.execute('CREATE INDEX IF NOT EXISTS idx_tasks_status_due_project ON tasks(completed_at,due_date,project,priority,start_time)')
  c.execute('CREATE INDEX IF NOT EXISTS idx_tasks_project_status_due ON tasks(project,completed_at,due_date,priority,start_time)')
 with connect() as c:
- c.execute("insert or ignore into file_open_history(project,path,opened_at) select project,path,last_open from files where coalesce(last_open,'')<>''")
-with connect() as c:
- c.execute('CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
+ _run_once(c, 'migration_open_history_backfill_v1', "insert or ignore into file_open_history(project,path,opened_at) select project,path,last_open from files where coalesce(last_open,'')<>''")
 try:
  with connect() as c:
   c.executescript("CREATE VIRTUAL TABLE IF NOT EXISTS task_fts USING fts5(title,description,project,tags,content='tasks',content_rowid='id'); CREATE TRIGGER IF NOT EXISTS task_fts_ai AFTER INSERT ON tasks BEGIN INSERT INTO task_fts(rowid,title,description,project,tags) VALUES(new.id,new.title,new.description,new.project,new.tags); END; CREATE TRIGGER IF NOT EXISTS task_fts_ad AFTER DELETE ON tasks BEGIN INSERT INTO task_fts(task_fts,rowid,title,description,project,tags) VALUES('delete',old.id,old.title,old.description,old.project,old.tags); END; CREATE TRIGGER IF NOT EXISTS task_fts_au AFTER UPDATE OF title,description,project,tags ON tasks BEGIN INSERT INTO task_fts(task_fts,rowid,title,description,project,tags) VALUES('delete',old.id,old.title,old.description,old.project,old.tags); INSERT INTO task_fts(rowid,title,description,project,tags) VALUES(new.id,new.title,new.description,new.project,new.tags); END;")

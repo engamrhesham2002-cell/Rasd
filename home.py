@@ -7,6 +7,7 @@ import shutil
 
 class HomeMixin:
  def show_home(self):
+  self.invalidate_home_summary()
   if hasattr(self,'watch_stop'):self.watch_stop.set();self.watch_root=None
   self.clear();self.project='';self.configure(bg=BG_VOID);self.title('Rasd // Project Matrix')
   self.selected_home_projects = {}
@@ -181,7 +182,7 @@ class HomeMixin:
      c.execute("DELETE FROM tasks WHERE project=?", (p_name,))
    except Exception as e:
     messagebox.showerror('خطأ', f'لم يتم حذف {p_name}:\n{e}', parent=self)
-  self.selected_home_projects.clear();self.update_bulk_action_bar();self.render_projects()
+  self.selected_home_projects.clear();self.update_bulk_action_bar();self.invalidate_home_summary();self.render_projects()
 
  def bulk_favorite_projects(self):
   selected_projs = [p for p, v in self.selected_home_projects.items() if v.get()]
@@ -189,14 +190,14 @@ class HomeMixin:
    for p_name in selected_projs:
     p_path = LOG / p_name
     c.execute('INSERT OR IGNORE INTO favorites(project,path,kind,created) VALUES(?,?,?,?)', (p_name, str(p_path.resolve()), 'folder', stamp(time.time())))
-  self.selected_home_projects.clear();self.update_bulk_action_bar();self.render_projects()
+  self.selected_home_projects.clear();self.update_bulk_action_bar();self.invalidate_home_summary();self.render_projects()
 
  def toggle_project_favorite(self, p_name, p_path):
   with connect() as c:
    exists = c.execute('SELECT 1 FROM favorites WHERE project=? AND path=?', (p_name, str(p_path.resolve()))).fetchone()
    if exists: c.execute('DELETE FROM favorites WHERE project=? AND path=?', (p_name, str(p_path.resolve())))
    else: c.execute('INSERT INTO favorites(project,path,kind,created) VALUES(?,?,?,?)', (p_name, str(p_path.resolve()), 'folder', stamp(time.time())))
-  self.render_projects()
+  self.invalidate_home_summary();self.render_projects()
 
  def show_project_context_menu(self, event, p_name, p_path):
   menu = tk.Menu(self, tearoff=0, bg=BG_PANEL, fg=FG_PRIMARY, activebackground=BG_SELECTED, activeforeground=ACCENT_MATRIX, font=(TERM_FONT, 10))
@@ -231,7 +232,7 @@ class HomeMixin:
      c.execute("DELETE FROM favorites WHERE project=?", (p_name,))
      c.execute("DELETE FROM tasks WHERE project=?", (p_name,))
     messagebox.showinfo('تم الإخفاء', 'تم تنويم وإخفاء المشروع من الواجهة والمهام، لكن ملفاته لا تزال موجودة في مجلد Log.', parent=self)
-    dialog.destroy();self.render_projects()
+    dialog.destroy();self.invalidate_home_summary();self.render_projects()
    except Exception as e:
     messagebox.showerror('خطأ', str(e), parent=dialog)
     
@@ -245,7 +246,7 @@ class HomeMixin:
       c.execute("DELETE FROM favorites WHERE project=?", (p_name,))
       c.execute("DELETE FROM tasks WHERE project=?", (p_name,))
      messagebox.showinfo('تم الحذف', 'تم حذف المشروع نهائياً.', parent=self)
-     dialog.destroy();self.render_projects()
+     dialog.destroy();self.invalidate_home_summary();self.render_projects()
     except Exception as e:
      messagebox.showerror('خطأ', str(e), parent=dialog)
 
@@ -289,19 +290,32 @@ class HomeMixin:
    self.after_idle(self.render_projects)
   except tk.TclError:pass
 
+ def invalidate_home_summary(self):
+  self._home_summary_cache=None
+
+ def _load_home_summary(self):
+  """ملخص المشاريع (أعداد/هاشتاجات/أغلفة) مع كاش قصير حتى لا تتكرر الاستعلامات مع كل ضغطة بحث."""
+  cached=getattr(self,'_home_summary_cache',None)
+  now=time.time()
+  if cached and now-cached[0]<5.0:return cached[1]
+  summary={'counts':{},'favorite_projects':set(),'tag_map':{},'cover_map':{}}
+  with connect() as c:
+   summary['counts']={r['project']:(r['n'],r['latest']) for r in c.execute('select project,count(*) n,max(mtime) latest from files group by project')}
+   summary['favorite_projects']={r['project'] for r in c.execute('SELECT project FROM favorites WHERE kind="folder"')}
+   for r in c.execute('select f.project,t.tag,count(*) n from tags t join files f on f.path=t.path group by f.project,t.tag order by f.project,n desc'):
+    summary['tag_map'].setdefault(r['project'],[]).append(r['tag'])
+   for r in c.execute("select project,min(path) path from files where ext in ('.png','.jpg','.jpeg','.bmp','.tif','.tiff') group by project"):
+    summary['cover_map'][r['project']]=r['path']
+  self._home_summary_cache=(now,summary)
+  return summary
+
  @timed_method('home.render_projects')
  def render_projects(self):
   for w in self.cards.winfo_children():w.destroy()
   
-  tag_map={};cover_map={}
-  with connect() as c:
-   counts={r['project']:(r['n'],r['latest']) for r in c.execute('select project,count(*) n,max(mtime) latest from files group by project')}
-   fav_rows = c.execute('SELECT project FROM favorites WHERE kind="folder"').fetchall()
-   favorite_projects = {r['project'] for r in fav_rows}
-   for r in c.execute('select f.project,t.tag,count(*) n from tags t join files f on f.path=t.path group by f.project,t.tag order by f.project,n desc'):
-    tag_map.setdefault(r['project'],[]).append(r['tag'])
-   for r in c.execute("select project,min(path) path from files where ext in ('.png','.jpg','.jpeg','.bmp','.tif','.tiff') group by project"):
-    cover_map[r['project']]=r['path']
+  summary=self._load_home_summary()
+  counts=summary['counts'];favorite_projects=summary['favorite_projects']
+  tag_map=summary['tag_map'];cover_map=summary['cover_map']
 
   projects=[p for p in LOG.iterdir() if p.is_dir() and not p.name.startswith('.') and is_project_path(p)]
   mode=getattr(self,'home_filter_mode','all')
@@ -421,7 +435,7 @@ class HomeMixin:
   if p.exists():return messagebox.showwarning('موجود','يوجد مشروع بهذا الاسم.')
   p.mkdir(parents=True)
   self.log_activity('إنشاء مشروع',f'تم إنشاء المشروع «{p.name}»',path=p,project=p.name)
-  self.render_projects()
+  self.invalidate_home_summary();self.render_projects()
 
  def log_activity(self,action,details,path=None,project=None,occurred_at=None):
   project = project or getattr(self,'project','')

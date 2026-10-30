@@ -407,7 +407,10 @@ class ScanningMixin:
   
   self.log_activity('فتح ملف',f'تم فتح الملف «{p.name}»',path=p)
   tree=getattr(self,'file_tree',None)
-  if tree is not None:
+  refresh_for_opened = getattr(self,'view_mode','')=='opened' or getattr(self,'sort_col','')=='opened'
+  if refresh_for_opened and tree is not None and tree.winfo_exists():
+   self.populate()
+  elif tree is not None:
    try:
     if tree.winfo_exists():
      for iid in (db_path,key):

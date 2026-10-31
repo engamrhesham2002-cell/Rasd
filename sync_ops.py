@@ -8,6 +8,19 @@ import threading
 import secrets
 import json
 
+def safe_zip_target(root, item):
+ """يعيد مسارًا آمنًا لعنصر داخل ZIP، أو None إذا كان المسار مطلقًا أو خارج الجذر."""
+ try:
+  root = Path(root).resolve()
+  parts = Path(item).parts
+  if Path(item).is_absolute() or any(part in ('..', '') or ':' in part for part in parts):
+   return None
+  target = (root / item).resolve()
+  target.relative_to(root)
+  return target
+ except (OSError, ValueError):
+  return None
+
 class SyncOpsMixin:
  def show_sync_dialog(self):
   dialog = tk.Toplevel(self)
@@ -292,7 +305,10 @@ class SyncOpsMixin:
      for i, item in enumerate(relevant_items):
       parts = Path(item).parts
       proj_name = parts[0]
-      target_path = LOG / item
+      # حماية من zip-slip: لا نقبل مسارات مطلقة أو تحتوي على ..
+      target_path = safe_zip_target(LOG, item)
+      if target_path is None:
+       continue
       
       if mode == 'overwrite' and (LOG / proj_name).exists() and proj_name not in cleared_projects:
        shutil.rmtree(LOG / proj_name, ignore_errors=True)

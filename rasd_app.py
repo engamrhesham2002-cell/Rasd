@@ -174,9 +174,9 @@ class App(SecurityMixin,
    self.iconify()
    def _restore_override(event=None):
     if self.state() == 'normal':
-     self.unbind('')
+     self.unbind('<Map>')
      self.after(10, self._apply_frameless_terminal_window)
-   self.bind('', _restore_override)
+   self.bind('<Map>', _restore_override)
   except Exception:
    pass
 

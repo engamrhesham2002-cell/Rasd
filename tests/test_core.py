@@ -13,6 +13,7 @@ TEST_HOME = tempfile.mkdtemp(prefix='rasd_test_')
 os.environ['LOCALAPPDATA'] = TEST_HOME
 
 import storage  # noqa: E402  (يجب ضبط LOCALAPPDATA قبله)
+import sync_ops  # noqa: E402
 
 
 def tearDownModule():
@@ -54,6 +55,15 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]['name'], 'a.pdf')
         self.assertEqual(rows[0]['tags'], 'ري')
+
+    def test_safe_zip_target_rejects_zip_slip(self):
+        root = storage.LOG
+        self.assertIsNone(sync_ops.safe_zip_target(root, 'Project/../../evil.txt'))
+        self.assertIsNone(sync_ops.safe_zip_target(root, '../evil.txt'))
+        self.assertIsNone(sync_ops.safe_zip_target(root, 'C:/Windows/evil.txt'))
+        target = sync_ops.safe_zip_target(root, 'Project/sub/file.txt')
+        self.assertIsNotNone(target)
+        self.assertTrue(str(target).startswith(str(root.resolve())))
 
     def test_cleanup_history_removes_old_rows(self):
         old_time = '2000-01-01 00:00'

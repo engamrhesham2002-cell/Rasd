@@ -1,6 +1,7 @@
 # tasks_list.py - واجهة قائمة المهام بالدوائر الملونة وإلغاء التحديد وضبط العربية ومنع نط السكرول
 from common import *
 from storage import *
+from tasks_utils import next_recurring_date
 
 class TasksListMixin:
  def show_tasks(self,project=None):
@@ -411,10 +412,8 @@ class TasksListMixin:
       except Exception: rec = None
       if rec and rec != 'لا يوجد' and row['due_date']:
        try:
-        d = datetime.strptime(row['due_date'], '%Y-%m-%d').date()
-        if rec == 'يومياً': next_d = d + timedelta(days=1)
-        elif rec == 'أسبوعياً': next_d = d + timedelta(days=7)
-        elif rec == 'شهرياً': next_d = date(d.year + (d.month // 12), (d.month % 12) + 1, d.day)
+        next_d = next_recurring_date(row['due_date'], rec)
+        if next_d is None: raise ValueError('نوع تكرار غير معروف')
         new_subs = []
         try:
          if row['subtasks']:

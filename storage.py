@@ -98,7 +98,7 @@ with connect() as c:
 
 with connect() as c:
  task_columns = {r['name'] for r in c.execute('PRAGMA table_info(tasks)')}
- for column in ('start_time', 'end_time', 'rich_text', 'attachments', 'document_rel', 'document_mtime'):
+ for column in ('start_time', 'end_time', 'rich_text', 'attachments', 'document_rel', 'document_mtime', 'subtasks', 'recurrence'):
   if column not in task_columns:
    c.execute(f'ALTER TABLE tasks ADD COLUMN {column} TEXT')
  c.execute('CREATE INDEX IF NOT EXISTS idx_tasks_status_due_project ON tasks(completed_at,due_date,project,priority,start_time)')

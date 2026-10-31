@@ -1,6 +1,18 @@
 # tasks_utils.py - الوظائف المساعدة وإدارة البيانات والملفات (ستايل التيرمينال الداكن)
 from common import *
 from storage import *
+import calendar
+
+def next_recurring_date(due_date, recurrence):
+ """يحسب تاريخ المهمة القادمة مع ضبط آخر الشهر (31 يناير -> 28/29 فبراير)."""
+ try: d = datetime.strptime(str(due_date), '%Y-%m-%d').date()
+ except (TypeError, ValueError): return None
+ if recurrence == 'يومياً': return d + timedelta(days=1)
+ if recurrence == 'أسبوعياً': return d + timedelta(days=7)
+ if recurrence == 'شهرياً':
+  year = d.year + (d.month // 12); month = (d.month % 12) + 1
+  return date(year, month, min(d.day, calendar.monthrange(year, month)[1]))
+ return None
 
 class TasksUtilsMixin:
  def _task_time_display(self,value):

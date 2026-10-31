@@ -14,6 +14,7 @@ os.environ['LOCALAPPDATA'] = TEST_HOME
 
 import storage  # noqa: E402  (يجب ضبط LOCALAPPDATA قبله)
 import sync_ops  # noqa: E402
+import tasks_utils  # noqa: E402
 
 
 def tearDownModule():
@@ -55,6 +56,16 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]['name'], 'a.pdf')
         self.assertEqual(rows[0]['tags'], 'ري')
+
+    def test_next_recurring_date_month_end(self):
+        from datetime import date
+        self.assertEqual(tasks_utils.next_recurring_date('2026-01-31', 'شهرياً'), date(2026, 2, 28))
+        self.assertEqual(tasks_utils.next_recurring_date('2024-01-31', 'شهرياً'), date(2024, 2, 29))
+        self.assertEqual(tasks_utils.next_recurring_date('2026-12-31', 'شهرياً'), date(2027, 1, 31))
+        self.assertEqual(tasks_utils.next_recurring_date('2026-03-15', 'شهرياً'), date(2026, 4, 15))
+        self.assertEqual(tasks_utils.next_recurring_date('2026-03-15', 'يومياً'), date(2026, 3, 16))
+        self.assertEqual(tasks_utils.next_recurring_date('2026-03-15', 'أسبوعياً'), date(2026, 3, 22))
+        self.assertIsNone(tasks_utils.next_recurring_date('bad', 'شهرياً'))
 
     def test_safe_zip_target_rejects_zip_slip(self):
         root = storage.LOG

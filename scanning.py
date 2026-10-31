@@ -225,6 +225,14 @@ class ScanningMixin:
     cleanup=old+internal;c.executemany('delete from tags where path=?',[(p,) for p in cleanup]);c.executemany('delete from files where path=?',[(p,) for p in cleanup])
    self.scanq.put(('done',str(root.resolve()),scanned,errors))
 
+ def run_when_populate_rendered(self,callback):
+  """ينفذ callback بعد اكتمال الرسم التدريجي للشجرة، أو فورًا إن كان الرسم منتهيًا."""
+  if getattr(self,'_populate_render_job',None):
+   self._populate_render_callbacks=getattr(self,'_populate_render_callbacks',[])+[callback]
+  else:
+   try:callback()
+   except Exception:pass
+
  @timed_method('explorer.populate')
  def populate(self):
   if not hasattr(self,'file_tree') or not self.current:return
@@ -340,45 +348,82 @@ class ScanningMixin:
   }
   for name,options in configured_tags.items():tree.tag_configure(name,**options)
   configured_ext_tags=set()
-  for path,values,isdir in data:
-   try:
-    display=list(values)
-    name_text = str(display[0])
-    
-    if not str(path).startswith('activity:'):
-     norm_p = os.path.normcase(str(path))
-     badges = []
-     if norm_p in favorite_paths_set:
-      badges.append('★')
-     if norm_p in linked_paths_set:
-      badges.append('<->')
-     if badges:
-      name_text = ' '.join(badges) + ' ' + name_text
-      
-    display[0] = '  ' + name_text
-    
-    if len(display)>5 and display[5]:display[5]=tag_badges(display[5])
-    if str(path).startswith('activity:'):
-     rowtag = 'file_other'
-     ev = self.activity_rows.get(str(path), {})
-     row_img = ev.get('icon') or self.blank_icon_image()
+
+  def render_slice(start,end):
+   for path,values,isdir in data[start:end]:
+    try:
+     display=list(values)
+     name_text = str(display[0])
+     
+     if not str(path).startswith('activity:'):
+      norm_p = os.path.normcase(str(path))
+      badges = []
+      if norm_p in favorite_paths_set:
+       badges.append('★')
+      if norm_p in linked_paths_set:
+       badges.append('<->')
+      if badges:
+       name_text = ' '.join(badges) + ' ' + name_text
+       
+     display[0] = '  ' + name_text
+     
+     if len(display)>5 and display[5]:display[5]=tag_badges(display[5])
+     if str(path).startswith('activity:'):
+      rowtag = 'file_other'
+      ev = self.activity_rows.get(str(path), {})
+      row_img = ev.get('icon') or self.blank_icon_image()
+     else:
+      rowtag = self.file_row_tag(path,isdir)
+      if rowtag.startswith('file_ext_') and rowtag not in configured_ext_tags:
+       tree.tag_configure(rowtag,background=BG_PANEL,foreground=FG_PRIMARY)
+       configured_ext_tags.add(rowtag)
+      row_img = self.file_icon_image(path,isdir)
+     tree.insert('','end',iid=path,values=(display[0],'[ ]',*display[1:]),image=row_img,tags=(rowtag,))
+    except tk.TclError:continue
+
+  def finalize_render():
+   self._populate_render_job=None
+   if hasattr(self,'status'):
+    count=len(tree.get_children())
+    if self.view_mode == 'changes':
+     self.status.set(RLM+f'عدد الأحداث في السجل: {count:,}')
     else:
-     rowtag = self.file_row_tag(path,isdir)
-     if rowtag.startswith('file_ext_') and rowtag not in configured_ext_tags:
-      tree.tag_configure(rowtag,background=BG_PANEL,foreground=FG_PRIMARY)
-      configured_ext_tags.add(rowtag)
-     row_img = self.file_icon_image(path,isdir)
-    tree.insert('','end',iid=path,values=(display[0],'[ ]',*display[1:]),image=row_img,tags=(rowtag,))
-   except tk.TclError:continue
-  if hasattr(self,'status'):
-   count=len(tree.get_children())
-   if self.view_mode == 'changes':
-    self.status.set(RLM+f'عدد الأحداث في السجل: {count:,}')
+     self.status.set(RLM+(f'الإجمالي: {count:,} عنصر  ·  المحدد: {len(tree.selection()):,}' if tree.selection() else f'الإجمالي: {count:,} عنصر'))
+   self.update_selection_status(tree)
+   self.schedule_preview_selected(tree)
+   callbacks=getattr(self,'_populate_render_callbacks',[])
+   self._populate_render_callbacks=[]
+   for callback in callbacks:
+    try:callback()
+    except Exception:pass
+
+  self._populate_render_token=getattr(self,'_populate_render_token',0)+1
+  token=self._populate_render_token
+  pending=getattr(self,'_populate_render_job',None)
+  if pending:
+   try:self.after_cancel(pending)
+   except tk.TclError:pass
+  self._populate_render_job=None
+
+  chunk=800
+  def render_chunk(start):
+   if token!=getattr(self,'_populate_render_token',0):return
+   try:
+    if not tree.winfo_exists():return
+   except tk.TclError:return
+   end=min(start+chunk,len(data))
+   render_slice(start,end)
+   if end<len(data):
+    if hasattr(self,'status'):self.status.set(RLM+f'جارٍ عرض {end:,} من {len(data):,} عنصر...')
+    try:self._populate_render_job=self.after(1,lambda:render_chunk(end))
+    except tk.TclError:return
    else:
-    self.status.set(RLM+(f'الإجمالي: {count:,} عنصر  ·  المحدد: {len(tree.selection()):,}' if tree.selection() else f'الإجمالي: {count:,} عنصر'))
-  
-  self.update_selection_status(tree)
-  self.schedule_preview_selected(tree)
+    finalize_render()
+
+  if len(data)<=chunk:
+   render_slice(0,len(data));finalize_render()
+  else:
+   render_chunk(0)
 
  def activate(self,tree):
   sel=tree.selection()
@@ -418,12 +463,15 @@ class ScanningMixin:
   if refresh_for_opened and tree is not None and tree.winfo_exists():
    self.populate()
   elif tree is not None:
-   try:
-    if tree.winfo_exists():
+   def update_opened_row():
+    try:
+     if not tree.winfo_exists():return
      for iid in (db_path,key):
       if tree.exists(iid):
-       tree.set(iid,'opened',' '+opened_at[:16]+' ');break
-   except tk.TclError:pass
+       tree.set(iid,'opened',' '+opened_at[:16]+' ');return
+    except tk.TclError:pass
+   update_opened_row()
+   if getattr(self,'_populate_render_job',None):self.run_when_populate_rendered(update_opened_row)
   if hasattr(self,'search_page') and self.search_page.winfo_exists() and self.search_page.winfo_ismapped():
    with connect() as c:self.search_cache=c.execute(FILE_ROWS_SQL,(self.project,)).fetchall()
    self.render_search_results()

@@ -216,9 +216,14 @@ class TasksUtilsMixin:
   if hasattr(self, 'collection_button'): self.collection_button.pack_forget()
   self.build_explorer(); self.animate_window_in()
   iid = str(p)
-  if getattr(self,'file_tree',None):
-   try:self.file_tree.selection_set(iid);self.file_tree.focus(iid);self.file_tree.see(iid)
-   except tk.TclError: pass
+  def select_task_file():
+   if getattr(self,'file_tree',None):
+    try:self.file_tree.selection_set(iid);self.file_tree.focus(iid);self.file_tree.see(iid)
+    except tk.TclError: pass
+  if getattr(self,'_populate_render_job',None) and not (getattr(self,'file_tree',None) and self.file_tree.exists(iid)):
+   self.run_when_populate_rendered(select_task_file)
+  else:
+   select_task_file()
 
  def _task_link_project_file(self, pending, label, row, project_name, parent):
   if not project_name or project_name=='اختر مشروعًا…':return messagebox.showwarning('المشروع','يرجى اختيار المشروع أولاً من القائمة.',parent=parent)

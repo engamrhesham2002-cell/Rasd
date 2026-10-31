@@ -940,7 +940,12 @@ class ExplorerMixin:
    if self.current and self.current.resolve()!=p.parent.resolve():self.backstack.append(self.current)
    self.forwardstack.clear();self.current=p.parent;self.mode='folder';self.folder_group='الكل';self.view_mode='files';self.collection_button.pack_forget();self._update_top_action_bars();self.refresh_directory();self.animate_window_in()
   iid=str(p.resolve())
-  if self.file_tree.exists(iid):self.file_tree.selection_set(iid);self.file_tree.focus(iid);self.file_tree.see(iid);self.on_tree_selection(self.file_tree)
+  def select_related_file():
+   if self.file_tree.exists(iid):self.file_tree.selection_set(iid);self.file_tree.focus(iid);self.file_tree.see(iid);self.on_tree_selection(self.file_tree)
+  if getattr(self,'_populate_render_job',None) and not self.file_tree.exists(iid):
+   self.run_when_populate_rendered(select_related_file)
+  else:
+   select_related_file()
 
  def leave_search_for(self,kind,value=None):
   self.hide_search_page()

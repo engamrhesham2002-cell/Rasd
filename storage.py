@@ -131,7 +131,7 @@ def classify(ext):
   if k != 'أخرى' and ext in v: return k
  return ext[1:].upper() if ext else 'بدون امتداد'
 
-HISTORY_RETENTION_DAYS = 180
+HISTORY_RETENTION_DAYS = 365
 HISTORY_MAX_ROWS = {'file_changes': 200000, 'activity_log': 200000, 'file_open_history': 200000}
 
 def cleanup_history(days=HISTORY_RETENTION_DAYS, force=False):

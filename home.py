@@ -497,7 +497,7 @@ class HomeMixin:
 
   self.log_activity('فتح مشروع',f'تم فتح المشروع «{self.project}»',path=root)
   
-  self.build_explorer();self.animate_window_in();self.scan_summary.set(RLM+'جارٍ فهرسة ملفات المشروع...');self.start_scan_progress();threading.Thread(target=self.scan_worker,args=(root,),daemon=True).start()
+  self.build_explorer();self.reset_empty_restored_filters();self.animate_window_in();self.scan_summary.set(RLM+'جارٍ فهرسة ملفات المشروع...');self.start_scan_progress();threading.Thread(target=self.scan_worker,args=(root,),daemon=True).start()
 
  def rebase_project_index(self,root):
   root=Path(root).resolve();project=root.name

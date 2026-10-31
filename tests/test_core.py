@@ -91,6 +91,36 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(new, 1)
         self.assertGreaterEqual(removed, 3)
 
+    def test_cleanup_orphans_removes_stale_rows(self):
+        root = storage.LOG / 'OrphanProj'
+        (root / 'KeepFolder').mkdir(parents=True, exist_ok=True)
+        kept = str(root / 'keep.pdf')
+        gone = str(root / 'gone.pdf')
+        now = storage.stamp(time.time())
+        with storage.connect() as c:
+            c.execute(
+                'insert or replace into files(path,project,rel,name,ext,size,mtime,last_open,indexed) '
+                'values(?,?,?,?,?,?,?,?,?)',
+                (kept, 'OrphanProj', 'keep.pdf', 'keep.pdf', '.pdf', 1, 1.0, None, 'x'),
+            )
+            c.execute("insert into project_scan_state(project,initial_scan_done) values('OrphanProj',1) "
+                      "on conflict(project) do update set initial_scan_done=1")
+            c.execute("insert or ignore into file_links(project,path1,path2) values('OrphanProj',?,?)", (kept, gone))
+            c.execute("insert or ignore into file_links(project,path1,path2) values('OrphanProj',?,?)", (kept, kept))
+            c.execute("insert or ignore into favorites(project,path,kind,created) values('OrphanProj',?,'file',?)", (gone, now))
+            c.execute("insert or ignore into favorites(project,path,kind,created) values('OrphanProj',?,'file',?)", (kept, now))
+            c.execute("insert or ignore into folder_tags(project,path,tag,created) values('OrphanProj','KeepFolder','t',?)", (now,))
+            c.execute("insert or ignore into folder_tags(project,path,tag,created) values('OrphanProj','GoneFolder','t',?)", (now,))
+        removed = storage.cleanup_orphans(force=True)
+        with storage.connect() as c:
+            links = c.execute("select count(*) from file_links where project='OrphanProj'").fetchone()[0]
+            favorites = c.execute("select count(*) from favorites where project='OrphanProj' and kind='file'").fetchone()[0]
+            folder_tags = c.execute("select count(*) from folder_tags where project='OrphanProj'").fetchone()[0]
+        self.assertEqual(links, 1)
+        self.assertEqual(favorites, 1)
+        self.assertEqual(folder_tags, 1)
+        self.assertGreaterEqual(removed, 3)
+
     def test_run_once_is_idempotent(self):
         with storage.connect() as c:
             c.execute('create table if not exists _test_run_once(x integer)')

@@ -672,6 +672,20 @@ class ExplorerMixin(ExplorerActivityMixin):
    with connect() as c:c.execute('insert into project_view_state(project,current_rel,mode,folder_filter,project_filter,discipline,tag_filter,sort_col,sort_desc,column_widths) values(?,?,?,?,?,?,?,?,?,?) on conflict(project) do update set current_rel=excluded.current_rel,mode=excluded.mode,folder_filter=excluded.folder_filter,project_filter=excluded.project_filter,discipline=excluded.discipline,tag_filter=excluded.tag_filter,sort_col=excluded.sort_col,sort_desc=excluded.sort_desc,column_widths=excluded.column_widths',(self.project,rel,getattr(self,'mode','folder'),getattr(self,'folder_group','الكل'),getattr(self,'project_group','الكل'),getattr(self,'discipline','الكل'),tag_filter,getattr(self,'sort_col','name'),int(getattr(self,'sort_desc',False)),widths))
   except Exception:pass
 
+ def reset_empty_restored_filters(self):
+  """لو الفلاتر المستعادة خلت الشاشة فاضية رغم وجود ملفات، نرجع لعرض الكل بدل شاشة فاضية."""
+  try:
+   if not hasattr(self,'file_tree') or not self.file_tree.winfo_exists():return
+   if self.file_tree.get_children():return
+   with connect() as c:total=c.execute('select count(*) from files where project=?',(self.project,)).fetchone()[0]
+   if total<=0:return
+   tag=self.tag_filter_var.get() if hasattr(self,'tag_filter_var') else 'الكل'
+   if self.folder_group=='الكل' and self.project_group=='الكل' and tag=='الكل':return
+   self.folder_group='الكل';self.project_group='الكل'
+   if hasattr(self,'tag_filter_var'):self.tag_filter_var.set('الكل')
+   self.rebuild_folder_tabs();self.refresh_directory();self.save_view_state()
+  except Exception:pass
+
  def update_selection_status(self,tree):
   selected=set(tree.selection())
   if tree is getattr(self,'file_tree',None) and getattr(self,'view_mode','') in ('changes', 'recycle_bin'):

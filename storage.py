@@ -162,6 +162,42 @@ def cleanup_history(days=HISTORY_RETENTION_DAYS, force=False):
   c.execute("insert or replace into app_settings(key,value) values('last_history_cleanup',?)", (today,))
  return removed
 
+def cleanup_orphans(force=False):
+ """يحذف بقايا الملفات المحذوفة (روابط، مفضلة، هاشتاجات مجلدات) للمشاريع المفحوصة بالكامل."""
+ today = datetime.now().strftime('%Y-%m-%d')
+ removed = 0
+ with connect() as c:
+  if not force:
+   row = c.execute("select value from app_settings where key='last_orphan_cleanup'").fetchone()
+   if row and row[0] == today: return 0
+  projects = [r[0] for r in c.execute('select project from project_scan_state where initial_scan_done=1').fetchall()]
+  for project in projects:
+   root = LOG / project
+   if not root.is_dir(): continue
+   try:
+    cur = c.execute(
+     'delete from file_links where project=? and (lower(path1) not in (select lower(path) from files where project=?) or lower(path2) not in (select lower(path) from files where project=?))',
+     (project, project, project))
+    removed += max(0, cur.rowcount)
+   except sqlite3.OperationalError:
+    pass
+   try:
+    cur = c.execute(
+     "delete from favorites where project=? and kind='file' and lower(path) not in (select lower(path) from files where project=?)",
+     (project, project))
+    removed += max(0, cur.rowcount)
+   except sqlite3.OperationalError:
+    pass
+   try:
+    stale = [r[0] for r in c.execute('select path from folder_tags where project=? group by path', (project,)).fetchall() if not (root / str(r[0] or '')).is_dir()]
+    if stale:
+     c.executemany('delete from folder_tags where project=? and path=?', [(project, p) for p in stale])
+     removed += len(stale)
+   except (sqlite3.OperationalError, OSError):
+    pass
+  c.execute("insert or replace into app_settings(key,value) values('last_orphan_cleanup',?)", (today,))
+ return removed
+
 def file_icon(path, is_dir=False):
  if is_dir: return '📁'
  ext = Path(path).suffix.lower()

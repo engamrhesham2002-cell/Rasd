@@ -478,6 +478,22 @@ class HomeMixin:
    except Exception:self.column_widths={}
    self.current=root
    self.preview_current_path=None
+   # استعادة آخر مكان وفلاتر كان المستخدم واقف عليها في المشروع
+   if state:
+    if state['mode'] in ('folder','project'):self.mode=state['mode']
+    if state['folder_filter']:self.folder_group=state['folder_filter']
+    if state['project_filter']:self.project_group=state['project_filter']
+    if state['discipline']:self.discipline=state['discipline']
+    self._restore_tag_filter=state['tag_filter'] or 'الكل'
+    saved_rel=str(state['current_rel'] or '').strip()
+    if saved_rel:
+     try:
+      candidate=(root/saved_rel).resolve()
+      candidate.relative_to(root)
+      if candidate.is_dir():self.current=candidate
+     except (OSError,ValueError):self.current=root
+   else:
+    self._restore_tag_filter='الكل'
 
   self.log_activity('فتح مشروع',f'تم فتح المشروع «{self.project}»',path=root)
   

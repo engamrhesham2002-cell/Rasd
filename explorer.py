@@ -119,7 +119,7 @@ class ExplorerMixin(ExplorerActivityMixin):
   self.tag_filter_frame = tk.Frame(actions, bg=BG_VOID)
   self.tag_filter_frame.pack(side='left', padx=2)
   tk.Label(self.tag_filter_frame,text=RLM+'فلتر الهاشتاج:',bg=BG_VOID,fg=FG_MUTED,font=(TERM_FONT,9)).pack(side='left',padx=(5,2))
-  self.tag_filter_var=tk.StringVar(value='الكل')
+  self.tag_filter_var=tk.StringVar(value=getattr(self,'_restore_tag_filter','الكل'))
   self.tag_filter_box=ttk.Combobox(self.tag_filter_frame,textvariable=self.tag_filter_var,values=('الكل',),state='readonly',width=16,justify='right',style='Office.TCombobox')
   self.tag_filter_box.pack(side='left')
   self.tag_filter_box.bind('<<ComboboxSelected>>',self.tag_filter_changed)
@@ -667,7 +667,9 @@ class ExplorerMixin(ExplorerActivityMixin):
   try:
    rel=self.current.relative_to(self.root).as_posix() if self.current and self.root else ''
    widths=json.dumps(getattr(self,'column_widths',{}))
-   with connect() as c:c.execute('insert into project_view_state(project,current_rel,mode,folder_filter,project_filter,discipline,sort_col,sort_desc,column_widths) values(?,?,?,?,?,?,?,?,?) on conflict(project) do update set current_rel=excluded.current_rel,mode=excluded.mode,folder_filter=excluded.folder_filter,project_filter=excluded.project_filter,discipline=excluded.discipline,sort_col=excluded.sort_col,sort_desc=excluded.sort_desc,column_widths=excluded.column_widths',(self.project,rel,getattr(self,'mode','folder'),getattr(self,'folder_group','الكل'),getattr(self,'project_group','الكل'),getattr(self,'discipline','الكل'),getattr(self,'sort_col','name'),int(getattr(self,'sort_desc',False)),widths))
+   tag_var=getattr(self,'tag_filter_var',None)
+   tag_filter=tag_var.get() if tag_var else getattr(self,'discipline','الكل')
+   with connect() as c:c.execute('insert into project_view_state(project,current_rel,mode,folder_filter,project_filter,discipline,tag_filter,sort_col,sort_desc,column_widths) values(?,?,?,?,?,?,?,?,?,?) on conflict(project) do update set current_rel=excluded.current_rel,mode=excluded.mode,folder_filter=excluded.folder_filter,project_filter=excluded.project_filter,discipline=excluded.discipline,tag_filter=excluded.tag_filter,sort_col=excluded.sort_col,sort_desc=excluded.sort_desc,column_widths=excluded.column_widths',(self.project,rel,getattr(self,'mode','folder'),getattr(self,'folder_group','الكل'),getattr(self,'project_group','الكل'),getattr(self,'discipline','الكل'),tag_filter,getattr(self,'sort_col','name'),int(getattr(self,'sort_desc',False)),widths))
   except Exception:pass
 
  def update_selection_status(self,tree):

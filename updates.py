@@ -96,6 +96,8 @@ class UpdatesMixin:
   name=Path(str(asset.get('name') or '')).name
   if not name.lower().endswith('.exe') or name!=str(asset.get('name') or ''):raise ValueError('اسم ملف التحديث غير صالح.')
   target=downloads/name;partial=target.with_suffix(target.suffix+'.part');written=0
+  digest=hashlib.sha256()
+  expected=str(asset.get('digest') or '').strip().lower()
   request=urllib.request.Request(url,headers={'User-Agent':'Rasd-Desktop-Updater'})
   try:
    with urllib.request.urlopen(request,timeout=30) as response,partial.open('wb') as output:
@@ -104,9 +106,13 @@ class UpdatesMixin:
      if not chunk:break
      written+=len(chunk)
      if written>size:raise ValueError('ملف التحديث أكبر من الحجم المعلن.')
+     digest.update(chunk)
      output.write(chunk)
    if written!=size:raise ValueError(f'اكتمل تنزيل {written:,} بايت فقط من أصل {size:,}.')
-   partial.replace(target);return target
+   actual=digest.hexdigest()
+   if expected.startswith('sha256:') and actual!=expected.split(':',1)[1]:
+    raise ValueError('بصمة ملف التحديث لا تطابق البصمة المعلنة من GitHub؛ تم إلغاء التثبيت.')
+   partial.replace(target);return target,actual
   except Exception:
    try:partial.unlink(missing_ok=True)
    except OSError:pass
@@ -125,7 +131,7 @@ class UpdatesMixin:
 
  def _handle_update_download(self,when,tag,dialog,future):
   self._update_download_dialog=None
-  try:installer=future.result()
+  try:installer,file_hash=future.result()
   except Exception as exc:
    try:dialog.destroy()
    except tk.TclError:pass
@@ -133,7 +139,7 @@ class UpdatesMixin:
   try:dialog.destroy()
   except tk.TclError:pass
   mode='standard'
-  if not queue_pending_update(installer,mode,tag):
+  if not queue_pending_update(installer,mode,tag,file_hash):
    messagebox.showerror('تعذر تجهيز التحديث','تعذر حفظ التحديث لهذا التثبيت. تأكد من صلاحية الكتابة داخل مجلد البرنامج وحاول مرة أخرى.',parent=self);return
   if when=='now':
    if not start_scheduled_update(os.getpid(),installer,BASE,sys.executable):

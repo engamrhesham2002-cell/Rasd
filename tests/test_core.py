@@ -1,4 +1,6 @@
 # Rasd - اختبارات سريعة للدوال الأساسية (stdlib unittest)
+import hashlib
+import json
 import os
 import shutil
 import sys
@@ -15,6 +17,7 @@ os.environ['LOCALAPPDATA'] = TEST_HOME
 import storage  # noqa: E402  (يجب ضبط LOCALAPPDATA قبله)
 import sync_ops  # noqa: E402
 import tasks_utils  # noqa: E402
+import update_utils  # noqa: E402
 
 
 def tearDownModule():
@@ -120,6 +123,18 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(favorites, 1)
         self.assertEqual(folder_tags, 1)
         self.assertGreaterEqual(removed, 3)
+
+    def test_pending_update_rejects_tampered_file(self):
+        installer = storage.LOG / 'fake_update.exe'
+        installer.write_bytes(b'original-bytes')
+        good = update_utils.file_sha256(installer)
+        self.assertEqual(good, hashlib.sha256(b'original-bytes').hexdigest())
+        self.assertTrue(update_utils.queue_pending_update(installer, 'standard', 'v999.0', good))
+        payload = json.loads(update_utils.UPDATE_PENDING.read_text(encoding='utf-8'))
+        self.assertEqual(payload['sha256'], good)
+        installer.write_bytes(b'tampered-bytes')
+        self.assertFalse(update_utils.launch_pending_update_at_start())
+        self.assertFalse(update_utils.UPDATE_PENDING.exists())
 
     def test_run_once_is_idempotent(self):
         with storage.connect() as c:

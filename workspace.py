@@ -1,7 +1,7 @@
 # Rasd - أدوات ومراجع مساحة العمل (Workspace Tools - ستايل التيرمينال الداكن)
 from common import *
 from storage import *
-import ssl
+import urllib.parse
 
 class WorkspaceMixin:
  def get_workspace_icon(self, kind, path):
@@ -19,13 +19,10 @@ class WorkspaceMixin:
     domain = urllib.parse.urlparse(parse_path).netloc or urllib.parse.urlparse(parse_path).path.split('/')[0]
     domain = domain.replace('www.', '')
     if domain:
-     ctx = ssl.create_default_context()
-     ctx.check_hostname = False
-     ctx.verify_mode = ssl.CERT_NONE
-     
+     # تحقق كامل من شهادة الموقع؛ لو فشل التحقق نسقط لأيقونة بديلة بدل تعطيل الأمان
      url = f"https://icons.duckduckgo.com/ip3/{domain}.ico"
      req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-     with urllib.request.urlopen(req, timeout=3.0, context=ctx) as response:
+     with urllib.request.urlopen(req, timeout=3.0) as response:
       image = Image.open(io.BytesIO(response.read())).convert('RGBA').resize((16, 16), Image.Resampling.LANCZOS)
    except Exception:
     pass

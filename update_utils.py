@@ -27,7 +27,18 @@ def check_for_updates_silently(current_version):
   pass
  return False, current_version
 
-def queue_pending_update(installer_path, mode='standard', tag=''):
+def file_sha256(path, chunk_size=1024 * 1024):
+ """يحسب بصمة SHA-256 لملف بدون تحميله كله في الذاكرة."""
+ try:
+  digest = hashlib.sha256()
+  with Path(path).open('rb') as handle:
+   for block in iter(lambda: handle.read(chunk_size), b''):
+    digest.update(block)
+  return digest.hexdigest()
+ except OSError:
+  return ''
+
+def queue_pending_update(installer_path, mode='standard', tag='', sha256=''):
  """حفظ بيانات التحديث الذي تم تنزيله ليتم تثبيته الآن أو في التشغيل القادم"""
  try:
   installer = Path(installer_path).resolve()
@@ -38,6 +49,7 @@ def queue_pending_update(installer_path, mode='standard', tag=''):
    'installer': str(installer),
    'mode': str(mode or 'standard'),
    'tag': str(tag or ''),
+   'sha256': str(sha256 or ''),
    'target_dir': str(BASE.resolve()),
    'exe_path': str(Path(sys.executable).resolve()),
    'queued_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -114,6 +126,16 @@ def launch_pending_update_at_start():
   tag = str(data.get('tag', ''))
   if not installer.is_file():
    UPDATE_PENDING.unlink(missing_ok=True)
+   return False
+  expected = str(data.get('sha256') or '').strip().lower()
+  if expected and file_sha256(installer) != expected:
+   # الملف اتغير بعد تنزيله: نرفض التثبيت ونمسح الطلب
+   try:
+    UPDATE_PENDING.unlink(missing_ok=True)
+    UPDATE_HOME.mkdir(parents=True, exist_ok=True)
+    UPDATE_FAILURE.write_text('تم إلغاء تحديث مجدول لأن بصمة الملف لا تطابق البصمة الأصلية.', encoding='utf-8')
+   except OSError:
+    pass
    return False
   if tag and compare_versions(tag, APP_VERSION) <= 0:
    UPDATE_PENDING.unlink(missing_ok=True)

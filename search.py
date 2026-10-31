@@ -156,6 +156,7 @@ class SearchMixin:
  def search_tab_changed(self,e=None):
   if getattr(self,'search_rendering',False) or not self.search_nb.tabs():return
   label=self.search_nb.tab(self.search_nb.select(),'text');self.search_type=self.search_tab_types.get(label,'كل النتائج');self.save_search_state()
+  self.render_search_tab(label)
 
  def launch_everything_search(self):
   exe=Path(getattr(sys,'_MEIPASS',BASE))/'Everything'/'Everything.exe'
@@ -457,35 +458,77 @@ class SearchMixin:
   kinds=sorted({classify(r.get('ext') or '') for r in rows},key=lambda x:(x not in ('لوحات CAD','PDF','Excel','Word','الصور'),x.casefold()))
   labels=['كل النتائج']+kinds
   if self.search_type not in labels:self.search_type='كل النتائج'
+  sorted_rows=sorted(rows,key=lambda x:(self.search_sort_key(x),str(x.get('rel') or '').casefold()),reverse=self.sort_desc)
+  self._search_render_generation=getattr(self,'_search_render_generation',0)+1
+  for job in getattr(self,'_search_render_jobs',{}).values():
+   try:self.after_cancel(job)
+   except tk.TclError:pass
+  self._search_render_jobs={}
   self.search_rendering=True
   for tab in self.search_nb.tabs():self.search_nb.forget(tab)
-  self.search_views={};self.search_tab_types={}
+  self.search_views={};self.search_tab_types={};self.search_tab_rows={};self.search_tab_rendered=set()
+  self._search_badges=(favorite_paths_set,linked_paths_set)
   for kind in labels:
-   subset=rows if kind=='كل النتائج' else [r for r in rows if classify(r.get('ext') or '')==kind]
+   subset=sorted_rows if kind=='كل النتائج' else [r for r in sorted_rows if classify(r.get('ext') or '')==kind]
    title=f'{kind} · {len(subset):,}';frame=tk.Frame(self.search_nb,bg=BG_PANEL);frame.grid_rowconfigure(0,weight=1);frame.grid_columnconfigure(0,weight=1);self.search_nb.add(frame,text=title,image=self.file_icon_image(self.type_icon_path(kind)),compound='left');tree=self.make_list(frame);tree.grid(row=0,column=0,sticky='nsew');ybar=ttk.Scrollbar(frame,orient='vertical',command=tree.yview);ybar.grid(row=0,column=1,sticky='ns');xbar=ttk.Scrollbar(frame,orient='horizontal',command=tree.xview);xbar.grid(row=1,column=0,sticky='ew');tree.configure(yscrollcommand=ybar.set,xscrollcommand=xbar.set)
    
    for tag_name in ('file_pdf','file_excel','file_word','file_cad','file_image','file_other'):
     tree.tag_configure(tag_name, background=BG_PANEL, foreground=FG_PRIMARY)
 
-   for r in sorted(subset,key=lambda x:(self.search_sort_key(x),str(x.get('rel') or '').casefold()),reverse=self.sort_desc):
-    p_str = str(r['path'])
-    rowtag=self.file_row_tag(p_str)
-    if rowtag.startswith('file_ext_'):tree.tag_configure(rowtag,background=BG_PANEL,foreground=FG_PRIMARY)
-    norm_p = os.path.normcase(str(Path(p_str).resolve()))
-    badges = []
-    if norm_p in favorite_paths_set: badges.append('[*]')
-    if norm_p in linked_paths_set: badges.append('<->')
-    name_txt = '  ' + (' '.join(badges) + ' ' if badges else '') + str(r.get('name') or '')
-    opened_raw = r.get('last_open')
-    opened_fmt = (' ' + str(opened_raw)[:16] + ' ') if opened_raw else '—'
-    mtime_fmt = ' ' + stamp(r.get('mtime') or 0) + ' '
-    tree.insert('','end',iid=p_str,values=(name_txt,'[ ]',r.get('ext') or 'ملف',sizefmt(r.get('size') or 0),mtime_fmt,opened_fmt,tag_badges(r.get('tags') or ''),r.get('rel') or ''),image=self.file_icon_image(p_str),tags=(rowtag,))
    tree.bind('<Double-1>',lambda e,tr=tree:self.open_file(Path(tr.selection()[0])) if tr.selection() else None)
-   self.search_views[title]=tree;self.search_tab_types[title]=kind
+   self.search_views[title]=tree;self.search_tab_types[title]=kind;self.search_tab_rows[title]=subset
    if kind==self.search_type:self.search_nb.select(frame)
   self.search_rendering=False
+  self.render_search_tab(self.search_nb.tab(self.search_nb.select(),'text'))
   self.search_status.set(f'>_ {len(rows):,} نتيجة في {self.project}  |  {source_note}  |  بحث في {mode.lower()}'+(f' عن «{term}»' if term else ''))
   self.title(f'Rasd // Search [{len(rows):,} results] // {self.project}')
+
+ def render_search_tab(self,title):
+  """يرسم تبويب نتائج واحد فقط عند الحاجة، وعلى دفعات حتى لا تتجمد الواجهة."""
+  tree=self.search_views.get(title);subset=self.search_tab_rows.get(title)
+  if tree is None or subset is None or title in self.search_tab_rendered:return
+  self.search_tab_rendered.add(title)
+  favorite_paths_set,linked_paths_set=getattr(self,'_search_badges',(set(),set()))
+  generation=getattr(self,'_search_render_generation',0)
+  jobs=getattr(self,'_search_render_jobs',None)
+  if jobs is None:self._search_render_jobs={};jobs=self._search_render_jobs
+  old=jobs.pop(title,None)
+  if old:
+   try:self.after_cancel(old)
+   except tk.TclError:pass
+  chunk=500
+
+  def render_slice(start,end):
+   for r in subset[start:end]:
+    try:
+     p_str = str(r['path'])
+     rowtag=self.file_row_tag(p_str)
+     if rowtag.startswith('file_ext_'):tree.tag_configure(rowtag,background=BG_PANEL,foreground=FG_PRIMARY)
+     norm_p = os.path.normcase(str(Path(p_str).resolve()))
+     badges = []
+     if norm_p in favorite_paths_set: badges.append('[*]')
+     if norm_p in linked_paths_set: badges.append('<->')
+     name_txt = '  ' + (' '.join(badges) + ' ' if badges else '') + str(r.get('name') or '')
+     opened_raw = r.get('last_open')
+     opened_fmt = (' ' + str(opened_raw)[:16] + ' ') if opened_raw else '—'
+     mtime_fmt = ' ' + stamp(r.get('mtime') or 0) + ' '
+     tree.insert('','end',iid=p_str,values=(name_txt,'[ ]',r.get('ext') or 'ملف',sizefmt(r.get('size') or 0),mtime_fmt,opened_fmt,tag_badges(r.get('tags') or ''),r.get('rel') or ''),image=self.file_icon_image(p_str),tags=(rowtag,))
+    except tk.TclError:continue
+
+  def render_chunk(start):
+   if generation!=getattr(self,'_search_render_generation',0):return
+   try:
+    if not tree.winfo_exists():return
+   except tk.TclError:return
+   end=min(start+chunk,len(subset))
+   render_slice(start,end)
+   if end<len(subset):
+    try:jobs[title]=self.after(1,lambda:render_chunk(end))
+    except tk.TclError:return
+   else:
+    jobs.pop(title,None)
+
+  render_chunk(0)
 
  def search_sort_key(self,r):
   fields={'name':str(r.get('name') or '').casefold(),'type':str(r.get('ext') or '').casefold(),'size':r.get('size') or 0,'mtime':r.get('mtime') or 0,'opened':r.get('last_open') or '', 'tags':str(r.get('tags') or '').casefold(),'path':str(r.get('rel') or '').casefold()}

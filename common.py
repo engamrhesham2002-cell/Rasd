@@ -10,35 +10,13 @@ from tkinter import ttk,messagebox,simpledialog,filedialog,colorchooser
 from tkinter import font as tkfont
 from PIL import Image,ImageTk,ImageDraw,ImageFont,ImageOps,ImageFilter,ImageStat,ImageChops
 
-BASE=Path(sys.executable).resolve().parent if getattr(sys,'frozen',False) else Path(__file__).resolve().parent
-APP_VERSION='v0.43'
-LATEST_RELEASE_API='https://api.github.com/repos/engamrhesham2002-cell/Rasd/releases/latest'
-UPDATE_HOME=Path(os.environ.get('LOCALAPPDATA',str(BASE)))/'Rasd'/'updates'
-UPDATE_PENDING=UPDATE_HOME/'pending.json'
-UPDATE_FAILURE=UPDATE_HOME/'update_failed.txt'
-
-# ثوابت الثيم البصري (Y2K Linux Terminal / Matrix / Btop)
-BG_VOID = "#070A0E"
-BG_PANEL = "#0D1219"
-BG_ALT_ROW = "#0A0E14"
-BG_HEADER = "#131B24"
-BG_SELECTED = "#0F291E"
-BG_HOVER = "#162430"
-BORDER_DIM = "#1C2A38"
-BORDER_GLOW = "#00FF66"
-FG_PRIMARY = "#E2F1E8"
-FG_MUTED = "#5E766A"
-ACCENT_MATRIX = "#00FF66"
-ACCENT_CYAN = "#00E5FF"
-ACCENT_AMBER = "#FFB800"
-ACCENT_DANGER = "#FF3355"
-
-# ألوان الأولويات الموحدة للمهام والتقويم (أحمر للعاجلة، أزرق للعادية، أصفر للمنخفضة)
-PRI_URGENT = "#FF3355"
-PRI_NORMAL = "#38BDF8"
-PRI_LOW = "#FFB800"
-
-# خط الواجهة الداعم للعربية بالكامل، وخط التيرمينال للعناوين الإنجليزية
-TERM_FONT = "Segoe UI"
-MONO_FONT = "Consolas"
-RLM = "\u200f"
+# المسارات والإصدار وثوابت الثيم صارت في ملفات مستقلة، وتُعاد تصديرها هنا
+# حتى يبقى `from common import *` صالحًا في كل الوحدات دون تغيير.
+from config import BASE, APP_VERSION, LATEST_RELEASE_API, UPDATE_HOME, UPDATE_PENDING, UPDATE_FAILURE
+from theme import (
+    BG_VOID, BG_PANEL, BG_ALT_ROW, BG_HEADER, BG_SELECTED, BG_HOVER,
+    BORDER_DIM, BORDER_GLOW, FG_PRIMARY, FG_MUTED,
+    ACCENT_MATRIX, ACCENT_CYAN, ACCENT_AMBER, ACCENT_DANGER,
+    PRI_URGENT, PRI_NORMAL, PRI_LOW,
+    TERM_FONT, MONO_FONT, RLM,
+)

@@ -2,6 +2,7 @@
 from common import *
 from update_utils import *
 from storage import *
+from repositories import project_summary
 from perf import timed_method
 import shutil
 
@@ -298,14 +299,7 @@ class HomeMixin:
   cached=getattr(self,'_home_summary_cache',None)
   now=time.time()
   if cached and now-cached[0]<5.0:return cached[1]
-  summary={'counts':{},'favorite_projects':set(),'tag_map':{},'cover_map':{}}
-  with connect() as c:
-   summary['counts']={r['project']:(r['n'],r['latest']) for r in c.execute('select project,count(*) n,max(mtime) latest from files group by project')}
-   summary['favorite_projects']={r['project'] for r in c.execute('SELECT project FROM favorites WHERE kind="folder"')}
-   for r in c.execute('select f.project,t.tag,count(*) n from tags t join files f on f.path=t.path group by f.project,t.tag order by f.project,n desc'):
-    summary['tag_map'].setdefault(r['project'],[]).append(r['tag'])
-   for r in c.execute("select project,min(path) path from files where ext in ('.png','.jpg','.jpeg','.bmp','.tif','.tiff') group by project"):
-    summary['cover_map'][r['project']]=r['path']
+  summary=project_summary()
   self._home_summary_cache=(now,summary)
   return summary
 

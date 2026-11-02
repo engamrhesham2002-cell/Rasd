@@ -18,6 +18,7 @@ import storage  # noqa: E402  (يجب ضبط LOCALAPPDATA قبله)
 import sync_ops  # noqa: E402
 import tasks_utils  # noqa: E402
 import update_utils  # noqa: E402
+import repositories  # noqa: E402
 
 
 def tearDownModule():
@@ -135,6 +136,25 @@ class CoreTests(unittest.TestCase):
         installer.write_bytes(b'tampered-bytes')
         self.assertFalse(update_utils.launch_pending_update_at_start())
         self.assertFalse(update_utils.UPDATE_PENDING.exists())
+
+    def test_project_summary_reads_counts_tags_and_cover(self):
+        root = storage.LOG / 'SummaryProj'
+        root.mkdir(parents=True, exist_ok=True)
+        doc = str(root / 'a.pdf')
+        pic = str(root / 'cover.png')
+        with storage.connect() as c:
+            c.execute('insert or replace into files(path,project,rel,name,ext,size,mtime,last_open,indexed) '
+                      'values(?,?,?,?,?,?,?,?,?)', (doc, 'SummaryProj', 'a.pdf', 'a.pdf', '.pdf', 10, 5.0, None, 'x'))
+            c.execute('insert or replace into files(path,project,rel,name,ext,size,mtime,last_open,indexed) '
+                      'values(?,?,?,?,?,?,?,?,?)', (pic, 'SummaryProj', 'cover.png', 'cover.png', '.png', 20, 6.0, None, 'x'))
+            c.execute('insert or replace into tags(path,tag) values(?,?)', (doc, 'ري'))
+            c.execute("insert or ignore into favorites(project,path,kind,created) values('SummaryProj',?,'folder',?)",
+                      (str(root), storage.stamp(time.time())))
+        summary = repositories.project_summary()
+        self.assertEqual(summary['counts']['SummaryProj'][0], 2)
+        self.assertIn('SummaryProj', summary['favorite_projects'])
+        self.assertIn('ري', summary['tag_map']['SummaryProj'])
+        self.assertEqual(summary['cover_map']['SummaryProj'], pic)
 
     def test_run_once_is_idempotent(self):
         with storage.connect() as c:

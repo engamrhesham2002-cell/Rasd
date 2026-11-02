@@ -74,6 +74,10 @@ class App(SecurityMixin,
    ('*selectBackground', BG_SELECTED),
    ('*selectForeground', ACCENT_MATRIX),
    ('*insertBackground', ACCENT_MATRIX),
+   ('*TCombobox*Listbox.background', BG_PANEL),
+   ('*TCombobox*Listbox.foreground', FG_PRIMARY),
+   ('*TCombobox*Listbox.selectBackground', BG_SELECTED),
+   ('*TCombobox*Listbox.selectForeground', ACCENT_MATRIX),
   ):
    try: self.option_add(pattern, color)
    except tk.TclError: pass

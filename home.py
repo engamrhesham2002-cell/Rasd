@@ -57,9 +57,10 @@ class HomeMixin:
    favorite_total=c.execute('select count(*) from favorites').fetchone()[0]
    
   summary=tk.Frame(wrap,bg=BG_VOID);summary.pack(fill='x',pady=(0,7))
-  for title,value,accent in [('المشاريع النشطة',f'{project_total:,}',ACCENT_CYAN),('الملفات المفهرسة',f'{indexed_total:,}',ACCENT_MATRIX),('المفضلة',f'{favorite_total:,}',ACCENT_AMBER)]:
+  self.home_stat_labels={}
+  for key,title,value,accent in [('projects','المشاريع النشطة',f'{project_total:,}',ACCENT_CYAN),('files','الملفات المفهرسة',f'{indexed_total:,}',ACCENT_MATRIX),('favorites','المفضلة',f'{favorite_total:,}',ACCENT_AMBER)]:
    tile=tk.Frame(summary,bg=BG_PANEL,highlightbackground=BORDER_DIM,highlightthickness=1);tile.pack(side='right',fill='x',expand=True,padx=(5,0))
-   tk.Label(tile,text=value,bg=BG_PANEL,fg=accent,font=(MONO_FONT,16,'bold')).pack(anchor='e',padx=12,pady=(6,0))
+   value_label=tk.Label(tile,text=value,bg=BG_PANEL,fg=accent,font=(MONO_FONT,16,'bold'));value_label.pack(anchor='e',padx=12,pady=(6,0));self.home_stat_labels[key]=value_label
    tk.Label(tile,text=RLM+title,bg=BG_PANEL,fg=FG_MUTED,font=(TERM_FONT,9,'bold')).pack(anchor='e',padx=12,pady=(0,6))
   self.project_count_label=tk.Label(wrap,text='',bg=BG_VOID,fg=FG_MUTED,font=(TERM_FONT,9));self.project_count_label.pack(anchor='e',pady=(0,2))
   
@@ -312,6 +313,7 @@ class HomeMixin:
   tag_map=summary['tag_map'];cover_map=summary['cover_map']
 
   projects=[p for p in LOG.iterdir() if p.is_dir() and not p.name.startswith('.') and is_project_path(p)]
+  active_total=len(projects)
   mode=getattr(self,'home_filter_mode','all')
   
   if mode=='favorites': projects=[p for p in projects if p.name in favorite_projects]
@@ -326,6 +328,10 @@ class HomeMixin:
   query=getattr(self,'project_search',tk.StringVar(value='')).get().strip().casefold()
   if query and query!='ابحث عن مشروع...':projects=[p for p in projects if query in p.name.casefold()]
   self.project_card_photos=[]
+  stat_labels=getattr(self,'home_stat_labels',{})
+  if 'projects' in stat_labels:stat_labels['projects'].configure(text=f'{active_total:,}')
+  if 'files' in stat_labels:stat_labels['files'].configure(text=f'{sum(n for n,_ in counts.values()):,}')
+  if 'favorites' in stat_labels:stat_labels['favorites'].configure(text=f'{len(favorite_projects):,}')
   if hasattr(self,'project_count_label'):self.project_count_label.configure(text=RLM+f'عدد المشاريع المعروضة: {len(projects)}')
   
   if not projects:

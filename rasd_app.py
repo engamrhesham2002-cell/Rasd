@@ -230,8 +230,9 @@ class App(SecurityMixin,
   s.configure('Office.TMenubutton',font=(TERM_FONT,9),padding=(8,6),background=BG_PANEL,foreground=FG_PRIMARY,arrowcolor=ACCENT_MATRIX,borderwidth=1,relief='solid',focuscolor=ACCENT_MATRIX,bordercolor=BORDER_DIM,lightcolor=BG_PANEL,darkcolor=BORDER_DIM)
   s.configure('TEntry',padding=(8,7),fieldbackground=BG_PANEL,foreground=FG_PRIMARY,insertcolor=ACCENT_MATRIX,focuscolor=ACCENT_MATRIX,selectbackground=BG_SELECTED,selectforeground=ACCENT_MATRIX,bordercolor=BORDER_DIM,lightcolor=BG_PANEL,darkcolor=BORDER_DIM)
   s.configure('TCombobox',padding=(5,4),fieldbackground=BG_PANEL,foreground=FG_PRIMARY,focuscolor=ACCENT_MATRIX,selectbackground=BG_SELECTED,selectforeground=ACCENT_MATRIX,bordercolor=BORDER_DIM,lightcolor=BG_PANEL,darkcolor=BORDER_DIM)
-  s.configure('Vertical.TScrollbar',troughcolor=BG_VOID,background=BORDER_DIM,arrowcolor=ACCENT_MATRIX,bordercolor=BG_VOID)
-  s.configure('Horizontal.TScrollbar',troughcolor=BG_VOID,background=BORDER_DIM,arrowcolor=ACCENT_MATRIX,bordercolor=BG_VOID)
+  for bar in ('TScrollbar','Vertical.TScrollbar','Horizontal.TScrollbar'):
+   s.configure(bar,troughcolor=BG_VOID,background=BORDER_DIM,arrowcolor=ACCENT_MATRIX,bordercolor=BG_VOID,darkcolor=BORDER_DIM,lightcolor=BORDER_DIM,arrowsize=9,width=11,relief='flat')
+   s.map(bar,background=[('active',BG_HOVER),('pressed',ACCENT_MATRIX)],arrowcolor=[('active',ACCENT_MATRIX),('pressed',BG_VOID)])
 
  def clear(self):
   for w in self.winfo_children():

@@ -43,7 +43,7 @@ class TasksListMixin(TasksActionsMixin, TasksDetailsMixin):
   workarea=tk.Frame(content,bg=BG_VOID);workarea.grid(row=0,column=1,sticky='nsew');workarea.grid_columnconfigure(0,weight=1);workarea.grid_rowconfigure(2,weight=1)
   capture=tk.Frame(workarea,bg=BG_PANEL,highlightbackground=BORDER_DIM,highlightthickness=1);capture.grid(row=0,column=0,sticky='ew',pady=(0,8));capture.grid_columnconfigure(0,weight=1)
   self.task_quick_var=tk.StringVar();self.task_quick_entry=tk.Entry(capture,textvariable=self.task_quick_var,bg=BG_VOID,fg=ACCENT_MATRIX,insertbackground=ACCENT_MATRIX,relief='solid',borderwidth=1,font=(TERM_FONT,10),justify='right');self.task_quick_entry.grid(row=0,column=0,sticky='ew',padx=(12,4),pady=(8,4),ipady=6);self.task_quick_entry.insert(0,'اكتب مهمة سريعة')
-  self.task_quick_entry.bind('<FocusIn>',lambda e:self.task_quick_entry.delete(0,'end') if self.task_quick_entry.get()=='اكتب مهمة سريعة' else None);self.task_quick_entry.bind('<Return>',lambda e:(self._task_add_quick(),'break'))
+  self.task_quick_entry.bind('<FocusIn>',lambda e:self.task_quick_entry.delete(0,'end') if self.task_quick_entry.get() in ('اكتب مهمة سريعة','لا توجد مشاريع — أنشئ مشروعًا أولًا') else None);self.task_quick_entry.bind('<Return>',lambda e:(self._task_add_quick(),'break'))
   self.task_quick_add_button=tk.Button(capture,text=RLM+'＋ إضافة مهمة',command=self._task_add_quick,bg=BG_HEADER,fg=ACCENT_MATRIX,activebackground=ACCENT_MATRIX,activeforeground=BG_VOID,relief='solid',borderwidth=1,font=(TERM_FONT,9,'bold'),padx=13,pady=5,cursor='hand2');self.task_quick_add_button.grid(row=0,column=1,padx=(3,10),pady=(8,4))
   opts=tk.Frame(capture,bg=BG_PANEL);opts.grid(row=1,column=0,columnspan=2,sticky='ew',padx=9,pady=(1,8))
   tk.Label(opts,text=RLM+'الموعد:',bg=BG_PANEL,fg=FG_MUTED,font=(TERM_FONT,8)).pack(side='right',padx=(6,2));self.task_due_var=tk.StringVar();self.task_due_entry=ttk.Entry(opts,textvariable=self.task_due_var,width=12,justify='center');self.task_due_entry.pack(side='right',padx=3);ttk.Button(opts,text=RLM+'🗓 التاريخ',command=lambda:self._task_pick_date(self.task_due_var,parent=self)).pack(side='right',padx=(0,4))
@@ -52,8 +52,14 @@ class TasksListMixin(TasksActionsMixin, TasksDetailsMixin):
   tk.Label(opts,text=RLM+'المشروع:',bg=BG_PANEL,fg=FG_MUTED,font=(TERM_FONT,8)).pack(side='right',padx=(7,2));project_names=self._task_project_names();project_choices=[self.task_scope] if self.task_scope else project_names;default_project=self.task_scope or (project_names[0] if len(project_names)==1 else 'اختر مشروعًا…');self.task_project_var=tk.StringVar(value=default_project);self.task_project_combo=ttk.Combobox(opts,textvariable=self.task_project_var,values=project_choices,state='disabled' if self.task_scope or not project_names else 'readonly',width=19,justify='right',style='Office.TCombobox');self.task_project_combo.pack(side='right',padx=3)
   ttk.Button(opts,text=RLM+'غير محددة',command=lambda:self.task_due_var.set('')).pack(side='right',padx=3);ttk.Button(opts,text=RLM+'اليوم',command=lambda:self.task_due_var.set(date.today().isoformat())).pack(side='right',padx=3);ttk.Button(opts,text=RLM+'غدًا',command=lambda:self.task_due_var.set((date.today()+timedelta(days=1)).isoformat())).pack(side='right',padx=3)
   tagrow=tk.Frame(capture,bg=BG_PANEL);tagrow.grid(row=2,column=0,columnspan=2,sticky='ew',padx=10,pady=(0,8));tk.Label(tagrow,text=RLM+'هاشتاجات:',bg=BG_PANEL,fg=FG_MUTED,font=(TERM_FONT,8)).pack(side='right',padx=(5,3));self.task_quick_tags_var=tk.StringVar();ttk.Entry(tagrow,textvariable=self.task_quick_tags_var,justify='right').pack(side='right',fill='x',expand=True,padx=3);tk.Label(tagrow,text=RLM+'مثال: #مراجعة #موقع',bg=BG_PANEL,fg=FG_MUTED,font=(TERM_FONT,8)).pack(side='right',padx=5)
-  self.task_quick_entry.configure(state='normal' if project_choices else 'disabled')
-  if not project_choices:self.task_quick_add_button.configure(state='disabled')
+  self.task_quick_entry.configure(state='normal')
+  if not project_choices:
+   self.task_quick_entry.delete(0,'end');self.task_quick_entry.insert(0,'لا توجد مشاريع — أنشئ مشروعًا أولًا');self.task_quick_entry.configure(fg=FG_MUTED)
+   hint=tk.Frame(capture,bg=BG_HEADER,highlightbackground=ACCENT_AMBER,highlightthickness=1)
+   hint.grid(row=3,column=0,columnspan=2,sticky='ew',padx=10,pady=(0,8))
+   opts.grid_remove();tagrow.grid_remove()
+   tk.Label(hint,text=RLM+'لا توجد مشاريع بعد. أنشئ مشروعًا أولًا عشان تقدر تضيف مهام وتتابعها.',bg=BG_HEADER,fg=FG_PRIMARY,font=(TERM_FONT,9),anchor='e').pack(side='right',fill='x',expand=True,padx=8,pady=6)
+   tk.Button(hint,text=RLM+'＋ مشروع جديد',command=self.new_project,bg=BG_SELECTED,fg=ACCENT_MATRIX,activebackground=ACCENT_MATRIX,activeforeground=BG_VOID,relief='solid',borderwidth=1,font=(TERM_FONT,9,'bold'),padx=12,pady=3,cursor='hand2').pack(side='left',padx=8)
   self.task_time_window=tk.Frame(workarea,bg=BG_HEADER,highlightbackground=BORDER_DIM,highlightthickness=1);self.task_time_window.grid(row=1,column=0,sticky='ew',pady=(0,8));self.task_time_window.grid_remove()
   tk.Label(self.task_time_window,text=RLM+'عرض مهام اليوم خلال الفترة:',bg=BG_HEADER,fg=ACCENT_CYAN,font=(TERM_FONT,8)).pack(side='right',padx=8);self.task_window_start=tk.StringVar(value='');self.task_window_end=tk.StringVar(value='');self._task_time_control(self.task_time_window,self.task_window_start,'من');self._task_time_control(self.task_time_window,self.task_window_end,'إلى');ttk.Button(self.task_time_window,text=RLM+'تطبيق',command=self._task_refresh_rows).pack(side='right',padx=5,pady=3)
   
@@ -70,6 +76,8 @@ class TasksListMixin(TasksActionsMixin, TasksDetailsMixin):
   self.task_dots_canvas.grid(row=0,column=1,sticky='ns',pady=5)
   scroll=ttk.Scrollbar(list_card,orient='vertical',command=self._on_task_tree_vscroll);scroll.grid(row=0,column=2,sticky='ns',pady=5)
   self.task_tree.configure(yscrollcommand=lambda f,l:(scroll.set(f,l),self._schedule_task_dots_redraw()))
+  self.task_empty_hint=tk.Label(list_card,text='',bg=BG_PANEL,fg=FG_MUTED,font=(TERM_FONT,10),justify='center',wraplength=420)
+  self.task_empty_hint.place(relx=0.5,rely=0.5,anchor='center');self.task_empty_hint.lower()
   
   # إزالة تلوين الخلفية بالكامل والاكتفاء بخلفية التيرمينال الداكنة الموحدة
   self.task_tree.tag_configure('urgent',background=BG_PANEL,foreground=FG_PRIMARY)
@@ -366,6 +374,16 @@ class TasksListMixin(TasksActionsMixin, TasksDetailsMixin):
   self.task_page_var.set(RLM+f'صفحة {self.task_page+1:,} / {pages:,}')
   self._task_preview_selected()
   self._schedule_task_dots_redraw()
+  self._task_update_empty_hint(total)
+
+ def _task_update_empty_hint(self,total):
+  hint=getattr(self,'task_empty_hint',None)
+  if not hint or not hint.winfo_exists():return
+  if total>0:
+   hint.place_forget();return
+  if self._task_project_names():text='لا توجد مهام مطابقة للفلتر الحالي.\nأضف مهمة من الأعلى أو غيّر الفلتر.'
+  else:text='لا توجد مهام بعد.\nأنشئ مشروعًا أولًا ثم أضف مهمتك الأولى.'
+  hint.configure(text=RLM+text);hint.place(relx=0.5,rely=0.5,anchor='center');hint.lift()
 
  def _task_page_shift(self,step):
   self.task_page=max(0,getattr(self,'task_page',0)+step);self._task_refresh_rows()

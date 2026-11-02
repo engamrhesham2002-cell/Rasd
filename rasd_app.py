@@ -41,6 +41,7 @@ class App(SecurityMixin,
     tk.Tk):
  def __init__(self):
   super().__init__()
+  self._apply_widget_defaults()
   self._is_maximized = False
   self._normal_geometry = '1280x800+80+40'
   self._titlebar = None
@@ -64,6 +65,18 @@ class App(SecurityMixin,
    try:self.after(900,lambda:self._show_update_failure(UPDATE_FAILURE.read_text(encoding='utf-8',errors='replace')))
    except Exception:pass
   if not self.password_enabled():self.after(2200,self.check_for_updates)
+
+ def _apply_widget_defaults(self):
+  """ألوان افتراضية لعناصر Tk الكلاسيكية: إطار تركيز أخضر خفيف بدل الأزرق، وتحديد داكن."""
+  for pattern, color in (
+   ('*highlightColor', ACCENT_MATRIX),
+   ('*highlightBackground', BORDER_DIM),
+   ('*selectBackground', BG_SELECTED),
+   ('*selectForeground', ACCENT_MATRIX),
+   ('*insertBackground', ACCENT_MATRIX),
+  ):
+   try: self.option_add(pattern, color)
+   except tk.TclError: pass
 
  def _build_custom_titlebar(self):
   bar = tk.Frame(self, bg=BG_VOID, height=36, highlightbackground=ACCENT_MATRIX, highlightthickness=1)
@@ -206,13 +219,13 @@ class App(SecurityMixin,
   s.map('TNotebook.Tab',background=[('selected',BG_HEADER)],foreground=[('selected',ACCENT_MATRIX)])
   s.configure('Toolbutton',font=(TERM_FONT,9,'bold'),padding=(10,6),background=BG_HEADER,foreground=FG_MUTED,borderwidth=0)
   s.map('Toolbutton',background=[('selected',ACCENT_MATRIX),('active',BG_HOVER)],foreground=[('selected',BG_VOID),('active',FG_PRIMARY)])
-  s.configure('TButton',font=(TERM_FONT,9,'bold'),padding=(8,5),background=BG_HEADER,foreground=ACCENT_MATRIX,borderwidth=1,relief='solid')
+  s.configure('TButton',font=(TERM_FONT,9,'bold'),padding=(8,5),background=BG_HEADER,foreground=ACCENT_MATRIX,borderwidth=1,relief='solid',focuscolor=ACCENT_MATRIX,bordercolor=BORDER_DIM,lightcolor=BG_HEADER,darkcolor=BORDER_DIM)
   s.map('TButton',background=[('active',BG_SELECTED),('pressed',ACCENT_MATRIX)],foreground=[('active',ACCENT_MATRIX),('pressed',BG_VOID)])
-  s.configure('Office.TCombobox',font=(TERM_FONT,9),padding=(8,6),fieldbackground=BG_PANEL,background=BG_PANEL,foreground=FG_PRIMARY,arrowcolor=ACCENT_MATRIX,borderwidth=1,relief='solid')
+  s.configure('Office.TCombobox',font=(TERM_FONT,9),padding=(8,6),fieldbackground=BG_PANEL,background=BG_PANEL,foreground=FG_PRIMARY,arrowcolor=ACCENT_MATRIX,borderwidth=1,relief='solid',focuscolor=ACCENT_MATRIX,selectbackground=BG_SELECTED,selectforeground=ACCENT_MATRIX,bordercolor=BORDER_DIM,lightcolor=BG_PANEL,darkcolor=BORDER_DIM)
   s.map('Office.TCombobox',fieldbackground=[('readonly',BG_PANEL)],foreground=[('readonly',FG_PRIMARY)],selectbackground=[('readonly',BG_SELECTED)],selectforeground=[('readonly',ACCENT_MATRIX)])
-  s.configure('Office.TMenubutton',font=(TERM_FONT,9),padding=(8,6),background=BG_PANEL,foreground=FG_PRIMARY,arrowcolor=ACCENT_MATRIX,borderwidth=1,relief='solid')
-  s.configure('TEntry',padding=(8,7),fieldbackground=BG_PANEL,foreground=FG_PRIMARY)
-  s.configure('TCombobox',padding=(5,4),fieldbackground=BG_PANEL,foreground=FG_PRIMARY)
+  s.configure('Office.TMenubutton',font=(TERM_FONT,9),padding=(8,6),background=BG_PANEL,foreground=FG_PRIMARY,arrowcolor=ACCENT_MATRIX,borderwidth=1,relief='solid',focuscolor=ACCENT_MATRIX,bordercolor=BORDER_DIM,lightcolor=BG_PANEL,darkcolor=BORDER_DIM)
+  s.configure('TEntry',padding=(8,7),fieldbackground=BG_PANEL,foreground=FG_PRIMARY,insertcolor=ACCENT_MATRIX,focuscolor=ACCENT_MATRIX,selectbackground=BG_SELECTED,selectforeground=ACCENT_MATRIX,bordercolor=BORDER_DIM,lightcolor=BG_PANEL,darkcolor=BORDER_DIM)
+  s.configure('TCombobox',padding=(5,4),fieldbackground=BG_PANEL,foreground=FG_PRIMARY,focuscolor=ACCENT_MATRIX,selectbackground=BG_SELECTED,selectforeground=ACCENT_MATRIX,bordercolor=BORDER_DIM,lightcolor=BG_PANEL,darkcolor=BORDER_DIM)
   s.configure('Vertical.TScrollbar',troughcolor=BG_VOID,background=BORDER_DIM,arrowcolor=ACCENT_MATRIX,bordercolor=BG_VOID)
   s.configure('Horizontal.TScrollbar',troughcolor=BG_VOID,background=BORDER_DIM,arrowcolor=ACCENT_MATRIX,bordercolor=BG_VOID)
 

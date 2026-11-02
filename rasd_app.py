@@ -20,6 +20,7 @@ from tasks_list import TasksListMixin
 from tasks_calendar import TasksCalendarMixin
 from workspace import WorkspaceMixin
 from sync_ops import SyncOpsMixin
+import ui_dialogs
 
 class App(SecurityMixin,
     WelcomeMixin,
@@ -42,6 +43,7 @@ class App(SecurityMixin,
  def __init__(self):
   super().__init__()
   self._apply_widget_defaults()
+  self._install_themed_dialogs()
   self._is_maximized = False
   self._normal_geometry = '1280x800+80+40'
   self._titlebar = None
@@ -58,6 +60,7 @@ class App(SecurityMixin,
   self._set_window_icon()
   self.protocol('WM_DELETE_WINDOW',lambda:self.close_app())
   self.setup_style()
+  self.bind_all('<Map>', self._on_widget_map, add='+')
   self.after(10, self._apply_frameless_terminal_window)
   self.show_lock_screen() if self.password_enabled() else self.show_welcome()
   self._poll_after_id=self.after(150,self.poll_queue)
@@ -81,6 +84,45 @@ class App(SecurityMixin,
   ):
    try: self.option_add(pattern, color)
    except tk.TclError: pass
+
+ def _on_widget_map(self,event):
+  widget=event.widget
+  if isinstance(widget,tk.Toplevel):
+   try:self.after_idle(lambda w=widget:self._darken_dialog_chrome(w))
+   except tk.TclError:pass
+
+ def _darken_dialog_chrome(self,win):
+  """يجعل شريط عنوان نافذة الحوار داكنًا بدل الأزرق الافتراضي (Windows 10/11)."""
+  if getattr(win,'_rasd_dark_chrome',False):return
+  try:
+   if not win.winfo_exists():return
+  except tk.TclError:return
+  win._rasd_dark_chrome=True
+  try:
+   hwnd=ctypes.windll.user32.GetParent(win.winfo_id())
+   dwm=ctypes.windll.dwmapi
+   def attr(number,value):
+    v=ctypes.c_int(value)
+    return dwm.DwmSetWindowAttribute(hwnd,number,ctypes.byref(v),ctypes.sizeof(v))
+   if attr(20,1)!=0:attr(19,1)
+   attr(35,0x00241B13)
+   attr(36,0x00E8F1E2)
+   attr(34,0x00382A1C)
+  except Exception:pass
+
+ def _install_themed_dialogs(self):
+  """تحويل نوافذ الرسائل والإدخال من ستايل ويندوز الأبيض إلى نوافذ داخلية داكنة."""
+  def info(title,message='',**kw):ui_dialogs.showinfo(kw.get('parent'),title,message)
+  def warning(title,message='',**kw):ui_dialogs.showwarning(kw.get('parent'),title,message)
+  def error(title,message='',**kw):ui_dialogs.showerror(kw.get('parent'),title,message)
+  def yesno(title,message='',**kw):return ui_dialogs.askyesno(kw.get('parent'),title,message)
+  def askstring(title,prompt,**kw):
+   return ui_dialogs.ask_string(kw.get('parent'),title,prompt,kw.get('initialvalue',''),kw.get('show'))
+  messagebox.showinfo=info
+  messagebox.showwarning=warning
+  messagebox.showerror=error
+  messagebox.askyesno=yesno
+  simpledialog.askstring=askstring
 
  def _build_custom_titlebar(self):
   bar = tk.Frame(self, bg=BG_VOID, height=36, highlightbackground=ACCENT_MATRIX, highlightthickness=1)

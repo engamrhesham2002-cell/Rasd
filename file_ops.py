@@ -339,8 +339,21 @@ class FileOpsMixin:
     menu.add_command(label=rm_lbl, command=lambda: self.remove_selected_from_current_specialty(tree), foreground=ACCENT_DANGER)
 
   if files:
-   menu.add_command(label=f'🏷 هاشتج الملف ({len(files)} ملف)' if len(files)>1 else '🏷 هاشتج الملف', command=self.edit_tags)
-   menu.add_command(label=f'مسح كل الهاشتاجات ({len(files)} ملف)' if len(files)>1 else 'مسح كل الهاشتاجات',command=lambda:self.clear_selected_tags(tree))
+   if len(files) == 1:
+    key = str(files[0].resolve())
+    with connect() as c: current_tags = [r[0] for r in c.execute('select tag from tags where path=? order by tag', (key,)).fetchall()]
+    tags_menu = tk.Menu(menu, tearoff=0, bg=BG_PANEL, fg=FG_PRIMARY, activebackground=BG_SELECTED, activeforeground=ACCENT_MATRIX, font=(TERM_FONT, 10))
+    tags_menu.add_command(label='🏷 تعديل هاشتاجات الملف...', command=self.edit_tags)
+    if current_tags:
+     tags_menu.add_separator()
+     for tag in current_tags:
+      tags_menu.add_command(label=f'× إزالة «{tag}»', command=lambda t=tag, path=files[0]: self.remove_tag_from_file(path, t))
+    tags_menu.add_separator()
+    tags_menu.add_command(label='× مسح كل الهاشتاجات', command=lambda: self.clear_selected_tags(tree), foreground=ACCENT_DANGER)
+    menu.add_cascade(label='🏷 الهاشتاجات', menu=tags_menu)
+   else:
+    menu.add_command(label=f'🏷 هاشتج الملفات ({len(files)} ملف)', command=self.edit_tags)
+    menu.add_command(label=f'مسح كل الهاشتاجات ({len(files)} ملف)', command=lambda: self.clear_selected_tags(tree))
    
   if selected and all(path.exists() for path in selected):
    menu.add_separator()

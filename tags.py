@@ -429,3 +429,16 @@ class TagsMixin:
    with connect() as c:self.search_cache=c.execute(FILE_ROWS_SQL,(self.project,)).fetchall()
    self.render_search_results()
   self.populate()
+
+ def remove_tag_from_file(self,path,tag):
+  path=Path(path)
+  key=str(path.resolve())
+  with connect() as c:
+   if not c.execute('select 1 from tags where path=? and tag=?',(key,tag)).fetchone():return
+   c.execute('delete from tags where path=? and tag=?',(key,tag))
+  self.log_activity('حذف هاشتاج الملف',f'حذف «{tag}» من {path.name}',path=path)
+  self.refresh_tag_filters()
+  if hasattr(self,'search_page') and self.search_page.winfo_exists() and self.search_page.winfo_ismapped():
+   with connect() as c:self.search_cache=c.execute(FILE_ROWS_SQL,(self.project,)).fetchall()
+   self.render_search_results()
+  self.populate()

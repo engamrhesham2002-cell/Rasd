@@ -49,7 +49,7 @@ if not errorlevel 1 goto push
 
 set "MSG="
 set /p "MSG=Commit message (press Enter for automatic): "
-if "!MSG!"=="" set "MSG=Update !DATE! !TIME!"
+if "!MSG!"=="" set "MSG=Update %DATE% %TIME%"
 git commit -m "!MSG!"
 if errorlevel 1 (
   echo [ERROR] Could not create the commit.

@@ -1,5 +1,6 @@
 # Rasd - one-click GitHub release (Windows PowerShell 5.1+)
-# Builds (optional), zips dist\Rasd, pushes main, creates tag + release, uploads asset.
+# Builds the app, packs it into RasdSetup.exe with NSIS, pushes main,
+# creates the tag + release, and uploads the installer for the in-app updater.
 param(
     [switch]$SkipBuild,
     [switch]$SkipPush,
@@ -10,17 +11,21 @@ param(
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Root      = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Root       = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $Root
 
-$Owner     = 'engamrhesham2002-cell'
-$Repo      = 'Rasd'
-$Branch    = 'main'
-$ApiBase   = "https://api.github.com/repos/$Owner/$Repo"
-$TokenFile = Join-Path $env:LOCALAPPDATA 'Rasd\github_token.txt'
-$NotesPath = Join-Path $Root 'RELEASE_NOTES.md'
-$DistDir   = Join-Path $Root 'dist\Rasd'
-$AssetDir  = Join-Path $Root 'release'
+$Owner       = 'engamrhesham2002-cell'
+$Repo        = 'Rasd'
+$Branch      = 'main'
+$ApiBase     = "https://api.github.com/repos/$Owner/$Repo"
+$TokenFile   = Join-Path $env:LOCALAPPDATA 'Rasd\github_token.txt'
+$NotesPath   = Join-Path $Root 'RELEASE_NOTES.md'
+$DistDir     = Join-Path $Root 'dist\Rasd'
+$NsiPath     = Join-Path $Root 'build_installer.nsi'
+$AssetDir    = Join-Path $Root 'release'
+$AssetName   = 'RasdSetup.exe'
+$Installer   = Join-Path $AssetDir $AssetName
+$MaxAssetSize = 350MB
 
 function Write-Step([string]$Text) {
     Write-Host ''
@@ -47,6 +52,18 @@ function Get-ApiError($err) {
         }
     } catch { }
     return $err.Exception.Message
+}
+
+function Find-Makensis {
+    $cmd = Get-Command makensis -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    $bases = @($env:ProgramFiles, ${env:ProgramFiles(x86)}, (Join-Path $env:LOCALAPPDATA 'Programs'))
+    foreach ($base in $bases) {
+        if (-not $base) { continue }
+        $candidate = Join-Path $base 'NSIS\makensis.exe'
+        if (Test-Path $candidate) { return $candidate }
+    }
+    return $null
 }
 
 function Read-Token {
@@ -86,29 +103,40 @@ function Read-Token {
 # ---------------------------------------------------------------- start
 Write-Host ''
 Write-Host '============================================' -ForegroundColor DarkGray
-Write-Host '  Rasd - Create GitHub Release' -ForegroundColor White
+Write-Host '  Rasd - Create GitHub Release (Setup EXE)' -ForegroundColor White
 Write-Host '============================================' -ForegroundColor DarkGray
 
 if (-not (Test-Path (Join-Path $Root 'config.py'))) { Fail 'config.py not found. Run this file from the Rasd folder.' }
 if (-not (Test-Path (Join-Path $Root '.git'))) { Fail 'This folder is not a Git repository.' }
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Fail 'Git is not installed or not in PATH.' }
 if (-not (Test-Path $NotesPath)) { Fail 'RELEASE_NOTES.md not found.' }
+if (-not (Test-Path $NsiPath)) { Fail 'build_installer.nsi not found.' }
 
 $versionMatch = Select-String -Path (Join-Path $Root 'config.py') -Pattern "APP_VERSION\s*=\s*'([^']+)'" | Select-Object -First 1
 if (-not $versionMatch) { Fail 'APP_VERSION not found in config.py.' }
-$version = $versionMatch.Matches[0].Groups[1].Value
-$tag     = $version
-$assetName = "Rasd-$version-win64.zip"
-$zipPath   = Join-Path $AssetDir $assetName
+$version   = $versionMatch.Matches[0].Groups[1].Value
+$tag       = $version
+$nsisVer   = $version -replace '^[vV]', ''
+$makensis  = Find-Makensis
+
+if (-not $makensis) {
+    Fail @'
+NSIS (makensis) is not installed.
+Install it once from https://nsis.sourceforge.io/Download
+or run this in PowerShell:  winget install -e --id NSIS.NSIS
+Then run release.bat again.
+'@
+}
 
 $title = (Get-Content -Encoding UTF8 $NotesPath -TotalCount 1) -replace '^#\s*', ''
 if (-not $title) { $title = "Rasd $version" }
 
 Write-Host ''
-Write-Host "  Version : $version" -ForegroundColor Gray
-Write-Host "  Repo    : $Owner/$Repo" -ForegroundColor Gray
-Write-Host "  Asset   : $assetName" -ForegroundColor Gray
-Write-Host "  Tag     : $tag" -ForegroundColor Gray
+Write-Host "  Version  : $version" -ForegroundColor Gray
+Write-Host "  Repo     : $Owner/$Repo" -ForegroundColor Gray
+Write-Host "  Asset    : $AssetName" -ForegroundColor Gray
+Write-Host "  Tag      : $tag" -ForegroundColor Gray
+Write-Host "  NSIS     : $makensis" -ForegroundColor Gray
 
 # ---------------------------------------------------------------- auth
 Write-Step 'Checking GitHub access'
@@ -116,9 +144,9 @@ $token = Read-Token
 if (-not $token) { Fail 'No GitHub token available.' }
 
 $script:headers = @{
-    Authorization        = "Bearer $token"
-    Accept               = 'application/vnd.github+json'
-    'User-Agent'         = 'Rasd-Release'
+    Authorization          = "Bearer $token"
+    Accept                 = 'application/vnd.github+json'
+    'User-Agent'           = 'Rasd-Release'
     'X-GitHub-Api-Version' = '2022-11-28'
 }
 
@@ -140,7 +168,7 @@ if ($repoInfo.permissions -and -not ($repoInfo.permissions.push -or $repoInfo.pe
     Fail 'This token does not have write access to the repository.'
 }
 
-# ---------------------------------------------------------------- build
+# ---------------------------------------------------------------- build app
 $rebuild = $false
 if (-not $SkipBuild) {
     if (-not (Test-Path (Join-Path $DistDir 'Rasd.exe'))) {
@@ -178,14 +206,14 @@ if (-not (Test-Path (Join-Path $DistDir 'Rasd.exe'))) {
 if (-not $Yes) {
     Write-Host ''
     Write-Host 'About to:' -ForegroundColor White
-    Write-Host "  1. Compress dist\Rasd into release\$assetName"
+    Write-Host "  1. Build $AssetName with NSIS (version $nsisVer)"
     if (-not $SkipPush) {
         Write-Host "  2. Commit local changes and push to $Branch"
         Write-Host "  3. Create tag $tag and GitHub release"
     } else {
         Write-Host "  2. (push skipped) Create tag $tag and GitHub release"
     }
-    Write-Host '  4. Upload the ZIP as a release asset'
+    Write-Host "  4. Upload $AssetName as the release asset"
     Write-Host ''
     $go = Read-Host 'Continue? (Y/n)'
     if ($go -match '^(n|no)$') {
@@ -194,32 +222,33 @@ if (-not $Yes) {
     }
 }
 
-# ---------------------------------------------------------------- zip
-Write-Step "Compressing dist\Rasd into release\$assetName"
+# ---------------------------------------------------------------- installer
+Write-Step "Building $AssetName with NSIS"
 if (-not (Test-Path $AssetDir)) { New-Item -ItemType Directory -Path $AssetDir -Force | Out-Null }
-if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+if (Test-Path $Installer) { Remove-Item $Installer -Force }
 
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-try {
-    [System.IO.Compression.ZipFile]::CreateFromDirectory(
-        (Resolve-Path $DistDir).Path, $zipPath,
-        [System.IO.Compression.CompressionLevel]::Optimal, $true)
-} catch {
-    Write-Warn "Fast zip failed, using Compress-Archive instead..."
-    Compress-Archive -Path (Resolve-Path $DistDir).Path -DestinationPath $zipPath -CompressionLevel Optimal -Force
+& $makensis "/DAPP_VERSION=$nsisVer" "/DROOT=$Root" $NsiPath
+if ($LASTEXITCODE -ne 0) { Fail 'NSIS failed to build the installer. Read the messages above.' }
+if (-not (Test-Path $Installer)) { Fail "NSIS finished but $Installer was not created." }
+
+$installerFile = Get-Item $Installer
+if ($installerFile.Length -le 0) { Fail 'The installer file is empty.' }
+if ($installerFile.Length -gt $MaxAssetSize) {
+    Fail ("The installer is {0:N1} MB, but the in-app updater accepts at most 350 MB." -f ($installerFile.Length / 1MB))
 }
 
-$zipFile = Get-Item $zipPath
-Write-Ok ("Created {0} ({1:N1} MB)" -f $zipFile.Name, ($zipFile.Length / 1MB))
-
-$reader = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+$stream = [System.IO.File]::OpenRead($Installer)
 try {
-    $hasExe = $reader.Entries | Where-Object { $_.FullName -eq 'Rasd/Rasd.exe' } | Select-Object -First 1
+    $sig = New-Object byte[] 2
+    $null = $stream.Read($sig, 0, 2)
 } finally {
-    $reader.Dispose()
+    $stream.Dispose()
 }
-if (-not $hasExe) { Fail 'The ZIP does not contain Rasd/Rasd.exe. Release aborted.' }
-Write-Ok 'ZIP structure verified: Rasd/Rasd.exe'
+if ($sig[0] -ne 0x4D -or $sig[1] -ne 0x5A) { Fail 'The installer is not a valid Windows EXE (missing MZ header).' }
+
+$hash = (Get-FileHash -Path $Installer -Algorithm SHA256).Hash.ToLower()
+Write-Ok ("Created {0} ({1:N1} MB)" -f $installerFile.Name, ($installerFile.Length / 1MB))
+Write-Ok "SHA-256: $hash"
 
 # ---------------------------------------------------------------- git
 if (-not $SkipPush) {
@@ -229,7 +258,7 @@ if (-not $SkipPush) {
     if ($LASTEXITCODE -ne 0) {
         git remote add origin "https://github.com/$Owner/$Repo.git"
         if ($LASTEXITCODE -ne 0) { Fail 'Could not add the GitHub remote.' }
-        Write-Ok "Added remote origin"
+        Write-Ok 'Added remote origin'
     }
 
     git add -A
@@ -264,7 +293,6 @@ Write-Ok "Tag $tag is on GitHub"
 
 # ---------------------------------------------------------------- release
 Write-Step 'Creating / updating the GitHub release'
-if (-not (Test-Path $NotesPath)) { Fail 'RELEASE_NOTES.md not found.' }
 $notes = Get-Content -Raw -Encoding UTF8 $NotesPath
 
 $release = $null
@@ -297,8 +325,8 @@ if ($release) {
 Write-Ok "Release ready: $($release.html_url)"
 
 # ---------------------------------------------------------------- asset
-Write-Step "Uploading $assetName"
-$existing = @($release.assets) | Where-Object { $_.name -eq $assetName } | Select-Object -First 1
+Write-Step "Uploading $AssetName"
+$existing = @($release.assets) | Where-Object { $_.name -eq $AssetName } | Select-Object -First 1
 if ($existing) {
     Write-Warn 'An asset with the same name exists, replacing it...'
     try {
@@ -310,11 +338,11 @@ if ($existing) {
 }
 
 $uploadBase = ($release.upload_url -replace '\{.*$', '')
-$uploadUri  = "$uploadBase?name=$([uri]::EscapeDataString($assetName))"
+$uploadUri  = "$uploadBase?name=$([uri]::EscapeDataString($AssetName))"
 
 try {
     $asset = Invoke-RestMethod -Uri $uploadUri -Headers $script:headers -Method Post `
-        -ContentType 'application/zip' -InFile $zipPath -TimeoutSec 1800
+        -ContentType 'application/x-msdownload' -InFile $Installer -TimeoutSec 1800
     Write-Ok ("Uploaded {0:N1} MB" -f ($asset.size / 1MB))
 } catch {
     Fail "Upload failed. The release exists but has no asset. Re-run release.bat to retry. $(Get-ApiError $_)"

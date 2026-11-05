@@ -440,7 +440,7 @@ if ($existing) {
 }
 
 $uploadBase = ($release.upload_url -replace '\{.*$', '')
-$uploadUri  = "$uploadBase?name=$([uri]::EscapeDataString($AssetName))"
+$uploadUri  = "${uploadBase}?name=$([uri]::EscapeDataString($AssetName))"
 
 try {
     $asset = Invoke-GitHubWrite -Uri $uploadUri -Method Post `

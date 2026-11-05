@@ -41,6 +41,9 @@ function Fail([string]$Text) {
 
 function Get-ApiError($err) {
     try {
+        if ($err.ErrorDetails -and $err.ErrorDetails.Message) { return $err.ErrorDetails.Message }
+    } catch { }
+    try {
         $resp = $err.Exception.Response
         if ($resp) {
             $stream = $resp.GetResponseStream()
@@ -128,7 +131,10 @@ Then run release.bat again.
 '@
 }
 
-$title = (Get-Content -Encoding UTF8 $NotesPath -TotalCount 1) -replace '^#\s*', ''
+# Read as a plain .NET string: Get-Content -Raw attaches provider note
+# properties (PSPath/ReadCount/...) that ConvertTo-Json turns into a huge object.
+$notes = [System.IO.File]::ReadAllText($NotesPath, [System.Text.Encoding]::UTF8)
+$title = (($notes -split '\r?\n', 2)[0]) -replace '^#\s*', ''
 if (-not $title) { $title = "Rasd $version" }
 
 Write-Host ''
@@ -293,7 +299,6 @@ Write-Ok "Tag $tag is on GitHub"
 
 # ---------------------------------------------------------------- release
 Write-Step 'Creating / updating the GitHub release'
-$notes = Get-Content -Raw -Encoding UTF8 $NotesPath
 
 $release = $null
 try {
@@ -305,7 +310,7 @@ try {
     if ($status -ne 404) { Fail "Could not check the existing release. $(Get-ApiError $_)" }
 }
 
-$payload = @{
+$payloadJson = @{
     tag_name   = $tag
     name       = $title
     body       = $notes
@@ -313,11 +318,20 @@ $payload = @{
     prerelease = $false
 } | ConvertTo-Json -Depth 5
 
+# Windows PowerShell 5.1 sends a plain string body using the ANSI code page,
+# which turns Arabic into invalid UTF-8 and makes GitHub reject it with 400.
+# Sending explicit UTF-8 bytes keeps the release notes readable.
+$payloadBytes = [System.Text.Encoding]::UTF8.GetBytes($payloadJson)
+
 if ($release) {
-    $release = Invoke-RestMethod -Uri "$ApiBase/releases/$($release.id)" -Headers $script:headers -Method Patch -Body $payload -ContentType 'application/json'
+    try {
+        $release = Invoke-RestMethod -Uri "$ApiBase/releases/$($release.id)" -Headers $script:headers -Method Patch -Body $payloadBytes -ContentType 'application/json; charset=utf-8'
+    } catch {
+        Fail "Could not update the existing release. $(Get-ApiError $_)"
+    }
 } else {
     try {
-        $release = Invoke-RestMethod -Uri "$ApiBase/releases" -Headers $script:headers -Method Post -Body $payload -ContentType 'application/json'
+        $release = Invoke-RestMethod -Uri "$ApiBase/releases" -Headers $script:headers -Method Post -Body $payloadBytes -ContentType 'application/json; charset=utf-8'
     } catch {
         Fail "Could not create the release. $(Get-ApiError $_)"
     }
@@ -346,6 +360,32 @@ try {
     Write-Ok ("Uploaded {0:N1} MB" -f ($asset.size / 1MB))
 } catch {
     Fail "Upload failed. The release exists but has no asset. Re-run release.bat to retry. $(Get-ApiError $_)"
+}
+
+# ---------------------------------------------------------------- cleanup
+# The in-app updater takes the FIRST .exe asset. Keep exactly one EXE and drop
+# legacy ZIP assets so users never download the wrong file.
+Write-Step 'Cleaning up extra release assets'
+try {
+    $fresh = Invoke-RestMethod -Uri "$ApiBase/releases/$($release.id)" -Headers $script:headers -Method Get
+    $extras = @($fresh.assets) | Where-Object {
+        $_.name -ne $AssetName -and ($_.name -match '\.(exe|zip)$')
+    }
+    if (-not $extras) {
+        Write-Ok "Only $AssetName is attached."
+    } else {
+        foreach ($extra in $extras) {
+            Write-Warn "Removing extra asset: $($extra.name)"
+            try {
+                Invoke-RestMethod -Uri "$ApiBase/releases/assets/$($extra.id)" -Headers $script:headers -Method Delete | Out-Null
+                Write-Ok "Removed $($extra.name)"
+            } catch {
+                Write-Warn "Could not remove $($extra.name): $(Get-ApiError $_)"
+            }
+        }
+    }
+} catch {
+    Write-Warn "Could not check extra assets: $(Get-ApiError $_)"
 }
 
 # ---------------------------------------------------------------- done

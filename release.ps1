@@ -69,6 +69,92 @@ function Find-Makensis {
     return $null
 }
 
+function Get-GitCredentialToken {
+    # The token that git itself uses for push (Windows Credential Manager).
+    # It is only read from the local credential store and never printed.
+    $oldPrompt = $env:GIT_TERMINAL_PROMPT
+    $env:GIT_TERMINAL_PROMPT = '0'
+    try {
+        $cred = "protocol=https`nhost=github.com`n" | git credential fill 2>$null
+        if (-not $cred) { return $null }
+        $line = $cred | Where-Object { $_ -like 'password=*' } | Select-Object -First 1
+        if (-not $line) { return $null }
+        $value = ($line -replace '^password=', '').Trim()
+        if ($value) { return $value }
+    } catch { }
+    finally {
+        if ($null -eq $oldPrompt) {
+            Remove-Item Env:\GIT_TERMINAL_PROMPT -ErrorAction SilentlyContinue
+        } else {
+            $env:GIT_TERMINAL_PROMPT = $oldPrompt
+        }
+    }
+    return $null
+}
+
+function Switch-ToGitCredentialToken {
+    # A read-only saved token returns 404 on write endpoints. Fall back once to
+    # the git credential so releases keep working without user intervention.
+    if ($script:usingFallback) { return $false }
+    $fallback = Get-GitCredentialToken
+    if (-not $fallback -or $fallback -eq $script:activeToken) { return $false }
+    $testHeaders = @{
+        Authorization          = "Bearer $fallback"
+        Accept                 = 'application/vnd.github+json'
+        'User-Agent'           = 'Rasd-Release'
+        'X-GitHub-Api-Version' = '2022-11-28'
+    }
+    try {
+        $me = Invoke-RestMethod -Uri 'https://api.github.com/user' -Headers $testHeaders -Method Get
+    } catch {
+        return $false
+    }
+    $script:headers = $testHeaders
+    $script:activeToken = $fallback
+    $script:usingFallback = $true
+    Write-Warn "The saved token is read-only; switched to the Git credential token ($($me.login))."
+    return $true
+}
+
+function Invoke-GitHubWrite {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [string]$Method = 'Post',
+        $Body,
+        [string]$ContentType = 'application/json; charset=utf-8',
+        [string]$InFile,
+        [int]$TimeoutSec = 0
+    )
+    $params = @{
+        Uri         = $Uri
+        Method      = $Method
+        Headers     = $script:headers
+        ErrorAction = 'Stop'
+    }
+    if ($TimeoutSec -gt 0) { $params.TimeoutSec = $TimeoutSec }
+    if ($null -ne $Body) {
+        $params.Body = $Body
+        $params.ContentType = $ContentType
+    }
+    if ($InFile) {
+        $params.InFile = $InFile
+        $params.ContentType = $ContentType
+    }
+
+    try {
+        return Invoke-RestMethod @params
+    } catch {
+        $err = $_
+        $status = 0
+        try { $status = [int]$err.Exception.Response.StatusCode } catch { }
+        if ($status -eq 404 -and (Switch-ToGitCredentialToken)) {
+            $params.Headers = $script:headers
+            return Invoke-RestMethod @params
+        }
+        throw
+    }
+}
+
 function Read-Token {
     foreach ($name in @('RASD_GH_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN')) {
         $value = [Environment]::GetEnvironmentVariable($name)
@@ -155,6 +241,8 @@ $script:headers = @{
     'User-Agent'           = 'Rasd-Release'
     'X-GitHub-Api-Version' = '2022-11-28'
 }
+$script:activeToken = $token
+$script:usingFallback = $false
 
 try {
     $me = Invoke-RestMethod -Uri 'https://api.github.com/user' -Headers $script:headers -Method Get
@@ -325,13 +413,13 @@ $payloadBytes = [System.Text.Encoding]::UTF8.GetBytes($payloadJson)
 
 if ($release) {
     try {
-        $release = Invoke-RestMethod -Uri "$ApiBase/releases/$($release.id)" -Headers $script:headers -Method Patch -Body $payloadBytes -ContentType 'application/json; charset=utf-8'
+        $release = Invoke-GitHubWrite -Uri "$ApiBase/releases/$($release.id)" -Method Patch -Body $payloadBytes
     } catch {
         Fail "Could not update the existing release. $(Get-ApiError $_)"
     }
 } else {
     try {
-        $release = Invoke-RestMethod -Uri "$ApiBase/releases" -Headers $script:headers -Method Post -Body $payloadBytes -ContentType 'application/json; charset=utf-8'
+        $release = Invoke-GitHubWrite -Uri "$ApiBase/releases" -Method Post -Body $payloadBytes
     } catch {
         Fail "Could not create the release. $(Get-ApiError $_)"
     }
@@ -344,7 +432,7 @@ $existing = @($release.assets) | Where-Object { $_.name -eq $AssetName } | Selec
 if ($existing) {
     Write-Warn 'An asset with the same name exists, replacing it...'
     try {
-        Invoke-RestMethod -Uri "$ApiBase/releases/assets/$($existing.id)" -Headers $script:headers -Method Delete | Out-Null
+        Invoke-GitHubWrite -Uri "$ApiBase/releases/assets/$($existing.id)" -Method Delete | Out-Null
     } catch {
         Fail "Could not delete the old asset. $(Get-ApiError $_)"
     }
@@ -355,7 +443,7 @@ $uploadBase = ($release.upload_url -replace '\{.*$', '')
 $uploadUri  = "$uploadBase?name=$([uri]::EscapeDataString($AssetName))"
 
 try {
-    $asset = Invoke-RestMethod -Uri $uploadUri -Headers $script:headers -Method Post `
+    $asset = Invoke-GitHubWrite -Uri $uploadUri -Method Post `
         -ContentType 'application/x-msdownload' -InFile $Installer -TimeoutSec 1800
     Write-Ok ("Uploaded {0:N1} MB" -f ($asset.size / 1MB))
 } catch {
@@ -377,7 +465,7 @@ try {
         foreach ($extra in $extras) {
             Write-Warn "Removing extra asset: $($extra.name)"
             try {
-                Invoke-RestMethod -Uri "$ApiBase/releases/assets/$($extra.id)" -Headers $script:headers -Method Delete | Out-Null
+                Invoke-GitHubWrite -Uri "$ApiBase/releases/assets/$($extra.id)" -Method Delete | Out-Null
                 Write-Ok "Removed $($extra.name)"
             } catch {
                 Write-Warn "Could not remove $($extra.name): $(Get-ApiError $_)"

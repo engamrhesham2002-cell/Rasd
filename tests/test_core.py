@@ -137,6 +137,58 @@ class CoreTests(unittest.TestCase):
         self.assertFalse(update_utils.launch_pending_update_at_start())
         self.assertFalse(update_utils.UPDATE_PENDING.exists())
 
+    def test_update_helper_avoids_console_pipes(self):
+        script = update_utils._UPDATE_HELPER_SCRIPT
+        self.assertTrue(script.isascii())
+        lowered = script.lower()
+        for blocked in ('tasklist', 'find /i', 'cmd.exe'):
+            self.assertNotIn(blocked, lowered)
+        self.assertIn('get-process -id $apppid', lowered)
+        self.assertIn('start-process -filepath $installer', lowered)
+        self.assertIn('/silent', lowered)
+
+    def test_start_scheduled_update_writes_utf8_job(self):
+        installer = Path(TEST_HOME) / 'مجلد™' / 'RasdSetup.exe'
+        installer.parent.mkdir(parents=True, exist_ok=True)
+        installer.write_bytes(b'fake-installer')
+        calls = []
+        original = update_utils.subprocess.Popen
+
+        class FakeProc:
+            pid = 1
+
+        def fake_popen(args, **kwargs):
+            calls.append((list(args), dict(kwargs)))
+            return FakeProc()
+
+        update_utils.subprocess.Popen = fake_popen
+        try:
+            ok = update_utils.start_scheduled_update(4321, installer, Path(TEST_HOME), Path(TEST_HOME) / 'Rasd.exe')
+        finally:
+            update_utils.subprocess.Popen = original
+        self.assertTrue(ok)
+        job = json.loads(update_utils.UPDATE_JOB.read_text(encoding='utf-8'))
+        self.assertEqual(job['installer'], str(installer.resolve()))
+        self.assertEqual(job['pid'], 4321)
+        self.assertIn('™', update_utils.UPDATE_JOB.read_text(encoding='utf-8'))
+        self.assertTrue(update_utils.UPDATE_HELPER.read_bytes().isascii())
+        self.assertEqual(len(calls), 1)
+        args, kwargs = calls[0]
+        self.assertEqual(args[0], update_utils._powershell_exe())
+        self.assertIn('-AppPid', args)
+        self.assertNotIn('cmd.exe', ' '.join(args).lower())
+        self.assertEqual(kwargs['creationflags'] & 0x08000000, 0x08000000)
+        self.assertFalse(update_utils.UPDATE_PENDING.exists())
+        self.assertFalse((update_utils.UPDATE_HOME / 'run_update.bat').exists())
+
+    def test_launch_pending_update_removes_legacy_bat(self):
+        update_utils.UPDATE_HOME.mkdir(parents=True, exist_ok=True)
+        update_utils.UPDATE_PENDING.unlink(missing_ok=True)
+        legacy = update_utils.UPDATE_HOME / 'run_update.bat'
+        legacy.write_text('@echo off\n', encoding='utf-8')
+        self.assertFalse(update_utils.launch_pending_update_at_start())
+        self.assertFalse(legacy.exists())
+
     def test_project_summary_reads_counts_tags_and_cover(self):
         root = storage.LOG / 'SummaryProj'
         root.mkdir(parents=True, exist_ok=True)

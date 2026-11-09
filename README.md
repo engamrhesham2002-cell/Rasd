@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.44.1-00ff99?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-v0.44.2-00ff99?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-00c8ff?style=for-the-badge" alt="Platform">
   <img src="https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/UI-Arabic%20%2F%20English-ffb000?style=for-the-badge" alt="Arabic / English UI">
@@ -140,6 +140,13 @@
 
 ---
 
+## الجديد في الإصدار v0.44.2
+
+- **إصلاح مكان أزرار الرجوع/التقدم/الأعلى/التحديث** في الإكسبلورر عند التحويل للإنجليزية: كانت الأزرار تنعكس وتنتقل لليمين بترتيب مقلوب وتُقصّ أحيانًا. أصبحت الآن على اليسار بنفس الترتيب `← → ↑ ↻` في العربية والإنجليزية، والمسار يمتد بعدها، مع تحاذٍ صحيح حسب اتجاه اللغة.
+- **ترتيب ثابت لفلتر الهاشتاج وفلاتر تاريخ النشاط** في الإنجليزية (العنوان ثم القائمة ثم زر الإعدادات) بدل الترتيب المقلوب.
+- الأزرار أصبحت أصغر قليلًا حتى تظهر كاملة دائمًا حتى لو كان جزء المعاينة مفتوحًا وضاقت مساحة الشريط.
+- تحسينات داخلية في طبقة الترجمة تسمح لأي شريط بتثبيت اتجاه ترتيبه مع بقاء عكس المحاذاة.
+
 ## الجديد في الإصدار v0.44.1
 
 - **إصلاح جذري لعطل التحديث التلقائي** على أسماء المستخدمين التي تحتوي رموزًا خاصة (مثل `™`): كان مساعد التحديث القديم يُقرأ بترميز خاطئ فيتحول المسار إلى `â„¢` وتظهر نافذة `find` سوداء عالقة.
@@ -255,7 +262,7 @@ winget install -e --id NSIS.NSIS
 وبعدها من مجلد المشروع:
 
 ```bat
-makensis /DAPP_VERSION=0.44.1 build_installer.nsi
+makensis /DAPP_VERSION=0.44.2 build_installer.nsi
 ```
 
 الناتج:

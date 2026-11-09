@@ -20,10 +20,21 @@ _ANCHOR_MIRROR = {'e': 'w', 'w': 'e', 'ne': 'nw', 'nw': 'ne', 'se': 'sw', 'sw': 
 _JUSTIFY_MIRROR = {'right': 'left', 'left': 'right'}
 
 
-def _mirror_options(kw):
+def _mirror_options(kw, widget=None):
     if is_rtl():
         return kw
-    if 'side' in kw and isinstance(kw['side'], str):
+    # يمكن لعنصر أو حاوية أن تطلب عدم عكس جهة الترتيب (side) مع بقاء عكس
+    # المحاذاة (anchor/justify). يُستخدم في أشرطة التنقل حتى لا ينعكس ترتيب
+    # أزرار الرجوع/التقدم عند التحويل للإنجليزية.
+    natural_side = False
+    if widget is not None:
+        if getattr(widget, '_rasd_no_side_mirror', False):
+            natural_side = True
+        else:
+            parent = getattr(widget, 'master', None)
+            if parent is not None and getattr(parent, '_rasd_natural_order', False):
+                natural_side = True
+    if not natural_side and 'side' in kw and isinstance(kw['side'], str):
         kw['side'] = _SIDE_MIRROR.get(kw['side'], kw['side'])
     if 'anchor' in kw and isinstance(kw['anchor'], str):
         kw['anchor'] = _ANCHOR_MIRROR.get(kw['anchor'], kw['anchor'])
@@ -490,9 +501,9 @@ def _patch_geometry():
         def wrapper(self, cnf=None, **kw):
             if cnf is None:
                 cnf = {}
-            kw = _mirror_options(kw)
+            kw = _mirror_options(kw, self)
             if isinstance(cnf, dict):
-                cnf = _mirror_options(dict(cnf))
+                cnf = _mirror_options(dict(cnf), self)
             return original(self, cnf, **kw)
 
         setattr(cls, name, wrapper)

@@ -19,6 +19,8 @@ import sync_ops  # noqa: E402
 import tasks_utils  # noqa: E402
 import update_utils  # noqa: E402
 import repositories  # noqa: E402
+import i18n  # noqa: E402
+import localize_ui  # noqa: E402
 
 
 def tearDownModule():
@@ -136,6 +138,34 @@ class CoreTests(unittest.TestCase):
         installer.write_bytes(b'tampered-bytes')
         self.assertFalse(update_utils.launch_pending_update_at_start())
         self.assertFalse(update_utils.UPDATE_PENDING.exists())
+
+    def test_nav_bar_side_not_mirrored_in_english(self):
+        class FakeWidget:
+            master = None
+
+        previous = i18n.get_language()
+        try:
+            i18n.set_language('en')
+            pinned = FakeWidget()
+            pinned._rasd_no_side_mirror = True
+            opts = localize_ui._mirror_options({'side': 'left', 'anchor': 'e'}, pinned)
+            self.assertEqual(opts['side'], 'left')
+            self.assertEqual(opts['anchor'], 'w')
+
+            parent = FakeWidget()
+            parent._rasd_natural_order = True
+            child = FakeWidget()
+            child.master = parent
+            self.assertEqual(localize_ui._mirror_options({'side': 'left'}, child)['side'], 'left')
+
+            self.assertEqual(localize_ui._mirror_options({'side': 'left'}, FakeWidget())['side'], 'right')
+            self.assertEqual(localize_ui._mirror_options({'side': 'left'})['side'], 'right')
+
+            i18n.set_language('ar')
+            self.assertEqual(localize_ui._mirror_options({'side': 'left'}, FakeWidget())['side'], 'left')
+            self.assertEqual(localize_ui._mirror_options({'side': 'left', 'anchor': 'e'}, pinned)['anchor'], 'e')
+        finally:
+            i18n.set_language(previous)
 
     def test_update_helper_avoids_console_pipes(self):
         script = update_utils._UPDATE_HELPER_SCRIPT

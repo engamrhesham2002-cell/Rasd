@@ -105,11 +105,19 @@ class ExplorerMixin(ExplorerActivityMixin):
   self.folder_filter_context=tk.Label(self.folder_filter_bar,text=RLM+'المجلد الحالي',bg=BG_VOID,fg=FG_MUTED,font=(TERM_FONT,9,'bold'));self.folder_filter_context.grid(row=0,column=1,sticky='e',padx=8)
 
   bar=tk.Frame(self.center,bg=BG_PANEL,highlightbackground=BORDER_DIM,highlightthickness=1);bar.grid(row=3,column=0,sticky='ew',pady=(4,4))
-  ttk.Button(bar,text='←',command=self.go_back,width=4).pack(side='left',padx=(4,2),pady=4)
-  ttk.Button(bar,text='→',command=self.go_forward,width=4).pack(side='left',padx=2,pady=4)
-  ttk.Button(bar,text='↑',command=self.go_up,width=4).pack(side='left',padx=2,pady=4)
-  ttk.Button(bar,text='↻',command=self.rescan,width=4).pack(side='left',padx=2,pady=4)
-  self.breadcrumb=tk.StringVar();tk.Label(bar,textvariable=self.breadcrumb,bg=BG_PANEL,fg=ACCENT_CYAN,font=(TERM_FONT,10,'bold'),anchor='e').pack(side='right',fill='x',expand=True,padx=10)
+  # شريط التنقل: الأزرار دائمًا على اليسار بنفس الترتيب (← → ↑ ↻) في العربية
+  # والإنجليزية، والمسار يمتد بعدها. عكس الجهة هنا كان يعكس ترتيب الأزرار
+  # ويقصّها عند التحويل للإنجليزية.
+  nav=tk.Frame(bar,bg=BG_PANEL);nav._rasd_no_side_mirror=True
+  nav.pack(side='left',padx=(4,4),pady=4)
+  self.nav_buttons=[]
+  for symbol,command,padx in (('←',self.go_back,1),('→',self.go_forward,1),('↑',self.go_up,1),('↻',self.rescan,1)):
+   btn=ttk.Button(nav,text=symbol,command=command,width=2);btn._rasd_no_side_mirror=True
+   btn.pack(side='left',padx=padx);self.nav_buttons.append(btn)
+  self.breadcrumb=tk.StringVar()
+  self.breadcrumb_label=tk.Label(bar,textvariable=self.breadcrumb,bg=BG_PANEL,fg=ACCENT_CYAN,font=(TERM_FONT,10,'bold'),anchor='e')
+  self.breadcrumb_label._rasd_no_side_mirror=True
+  self.breadcrumb_label.pack(side='left',fill='x',expand=True,padx=10)
   
   actions=tk.Frame(self.center,bg=BG_VOID);actions.grid(row=4,column=0,sticky='ew',pady=(0,5))
   self.preview_toggle_button=ttk.Button(actions,text=RLM+'◧ إظهار المعاينة',command=self.toggle_preview_panel)
@@ -117,6 +125,8 @@ class ExplorerMixin(ExplorerActivityMixin):
   self.workspace_btn=ttk.Button(actions,text=RLM+'⚡ وصول سريع',command=lambda:self.show_workspace_menu(self.workspace_btn));self.workspace_btn.pack(side='left',padx=2)
   
   self.tag_filter_frame = tk.Frame(actions, bg=BG_VOID)
+  # ترتيب داخلي ثابت (label ثم القائمة ثم زر الإعدادات) في اللغتين
+  self.tag_filter_frame._rasd_natural_order = True
   self.tag_filter_frame.pack(side='left', padx=2)
   tk.Label(self.tag_filter_frame,text=RLM+'فلتر الهاشتاج:',bg=BG_VOID,fg=FG_MUTED,font=(TERM_FONT,9)).pack(side='left',padx=(5,2))
   self.tag_filter_var=tk.StringVar(value=getattr(self,'_restore_tag_filter','الكل'))
@@ -130,6 +140,7 @@ class ExplorerMixin(ExplorerActivityMixin):
   self.add_to_specialty_btn = tk.Button(actions, text=RLM+'📁 + إضافة مجلد لهذا التخصص', command=lambda: self.edit_folder_specialties(preselect_tag=getattr(self, 'specialty_filter', None)), bg=BG_HEADER, fg=ACCENT_MATRIX, activebackground=ACCENT_MATRIX, activeforeground=BG_VOID, relief='solid', borderwidth=1, font=(TERM_FONT, 8, 'bold'), padx=10, pady=5, cursor='hand2')
 
   self.changes_filter_frame = tk.Frame(actions, bg=BG_VOID)
+  self.changes_filter_frame._rasd_natural_order = True
   self.activity_date_mode = getattr(self, 'activity_date_mode', 'all')
   self.activity_custom_date = getattr(self, 'activity_custom_date', tk.StringVar(value=''))
   tk.Label(self.changes_filter_frame, text=RLM+'تاريخ النشاط:', bg=BG_VOID, fg=FG_MUTED, font=(TERM_FONT, 9, 'bold')).pack(side='left', padx=(5, 4))

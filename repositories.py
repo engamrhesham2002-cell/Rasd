@@ -17,6 +17,14 @@ def project_summary():
         for r in c.execute("select project,min(path) path from files "
                            "where ext in ('.png','.jpg','.jpeg','.bmp','.tif','.tiff') group by project"):
             summary['cover_map'][r['project']] = r['path']
+        # الغلاف المخصص (كليك يمين على المشروع) له الأولوية على أول صورة في المشروع
+        try:
+            for r in c.execute('select project,path from project_covers'):
+                custom = Path(r['path'])
+                if custom.is_file():
+                    summary['cover_map'][r['project']] = str(custom)
+        except sqlite3.OperationalError:
+            pass
     return summary
 
 

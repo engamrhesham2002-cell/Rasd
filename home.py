@@ -211,9 +211,35 @@ class HomeMixin:
   menu.add_command(label=RLM+'📂 فتح المشروع', command=lambda: self.open_project(p_path))
   menu.add_command(label=fav_label, command=lambda: self.toggle_project_favorite(p_name, p_path))
   menu.add_separator()
+  menu.add_command(label=RLM+'🖼 تعيين صورة للمشروع...', command=lambda: self.choose_project_cover(p_name))
+  if get_project_cover(p_name):
+   menu.add_command(label=RLM+'× إزالة صورة المشروع', command=lambda: self.remove_project_cover(p_name))
+  menu.add_separator()
   menu.add_command(label=RLM+'📦 تصدير المشروع', command=lambda: self._quick_export_project(p_name))
   menu.add_command(label=RLM+'🗑 خيارات الحذف...', command=lambda: self.delete_project_dialog(p_name, p_path), foreground=ACCENT_DANGER)
   menu.tk_popup(event.x_root, event.y_root)
+
+ def choose_project_cover(self, p_name):
+  """اختيار صورة مخصصة للمشروع من أي مكان على الجهاز ونسخها لمجلد بيانات البرنامج."""
+  path = filedialog.askopenfilename(
+   parent=self, title='اختر صورة للمشروع',
+   filetypes=[('Images', '*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp;*.tif;*.tiff'), ('All files', '*.*')])
+  if not path: return
+  try:
+   set_project_cover(p_name, path)
+  except Exception as e:
+   messagebox.showerror('خطأ', str(e), parent=self); return
+  self.invalidate_home_summary()
+  self.render_projects()
+
+ def remove_project_cover(self, p_name):
+  """إزالة صورة الغلاف المخصصة والعودة للصورة التلقائية."""
+  try:
+   clear_project_cover(p_name)
+  except Exception as e:
+   messagebox.showerror('خطأ', str(e), parent=self); return
+  self.invalidate_home_summary()
+  self.render_projects()
 
  def _quick_export_project(self, p_name):
   save_path = filedialog.asksaveasfilename(title='حفظ ملف التصدير', defaultextension='.zip', filetypes=[('ZIP Files', '*.zip')], initialfile=f"{p_name}_backup.zip", parent=self)
@@ -364,9 +390,9 @@ class HomeMixin:
     latest=indexed[1] if indexed and indexed[1] else p.stat().st_mtime;modified=datetime.fromtimestamp(latest).strftime('%d-%m-%Y')
    except OSError:child_count=0;modified='—'
    
-   # وضع المشروع الأول في أقصى اليمين (RTL Grid)
-   rtl_col = columns - 1 - (i % columns)
-   box=tk.Frame(self.cards,bg=BG_PANEL,highlightbackground=BORDER_DIM,highlightthickness=1,cursor='hand2');box.grid(row=i//columns,column=rtl_col,sticky='nsew',padx=7,pady=7)
+   # في العربية يبدأ المشروع الأول من أقصى اليمين، وفي الإنجليزية من أقصى اليسار
+   col_index = (columns - 1 - (i % columns)) if is_rtl() else (i % columns)
+   box=tk.Frame(self.cards,bg=BG_PANEL,highlightbackground=BORDER_DIM,highlightthickness=1,cursor='hand2');box.grid(row=i//columns,column=col_index,sticky='nsew',padx=7,pady=7)
    
    def _box_enter(e, b=box): b.configure(highlightbackground=ACCENT_MATRIX)
    def _box_leave(e, b=box): b.configure(highlightbackground=BORDER_DIM)

@@ -271,6 +271,13 @@ class FileOpsMixin:
    clip = getattr(self, 'app_clipboard', None)
    if clip and clip['paths'] and getattr(self, 'view_mode', 'files') == 'files':
     menu.add_command(label='📋 لصق (Paste)', command=self.paste_files)
+   current_dir = getattr(self, 'current', None)
+   can_create = (getattr(self, 'view_mode', 'files') == 'files'
+                 and current_dir is not None and Path(current_dir).is_dir())
+   if can_create:
+    menu.add_separator()
+    menu.add_command(label='📁 مجلد جديد', command=self.create_new_folder)
+    menu.add_command(label='📄 إضافة ملف...', command=self.add_files_to_current)
    if getattr(self, 'view_mode', '') == 'recycle_bin':
     menu.add_command(label='🗑 تفريغ السلة بالكامل', command=self.empty_recycle_bin, foreground=ACCENT_DANGER)
    elif getattr(self, 'view_mode', '') == 'changes':
@@ -366,6 +373,79 @@ class FileOpsMixin:
   self.current = target_dir
   self.paste_files()
   self.current = old_current
+
+ def create_new_folder(self):
+  """إنشاء مجلد جديد داخل المجلد الحالي باسم يختاره المستخدم (بنفس أسلوب ويندوز)."""
+  target_dir = getattr(self, 'current', None)
+  if not target_dir or not Path(target_dir).is_dir(): return
+  name = simpledialog.askstring('مجلد جديد', 'اسم المجلد:', parent=self,
+                                initialvalue=tr('مجلد جديد'))
+  if not name: return
+  name = name.strip()
+  if not name: return
+  if name in ('.', '..') or re.search(r'[<>:"/\\|?*\x00-\x1f]', name):
+   messagebox.showerror('اسم غير صالح', 'اسم المجلد يحتوي على رموز غير مسموح بها في ويندوز.', parent=self)
+   return
+  dest = Path(target_dir) / name
+  if dest.exists():
+   messagebox.showerror('موجود', 'يوجد ملف أو مجلد بهذا الاسم بالفعل.', parent=self)
+   return
+  try:
+   dest.mkdir()
+  except OSError as err:
+   messagebox.showerror('خطأ', str(err), parent=self)
+   return
+  if hasattr(self, 'status'):
+   self.status.set(f'تم إنشاء المجلد «{name}»')
+  self.rescan()
+
+ def add_files_to_current(self):
+  """اختيار ملفات من أي مكان في الجهاز ونسخها إلى المجلد الحالي."""
+  target_dir = getattr(self, 'current', None)
+  if not target_dir or not Path(target_dir).is_dir(): return
+  target_dir = Path(target_dir)
+  try:
+   chosen = filedialog.askopenfilenames(parent=self, title='اختر الملفات لإضافتها')
+  except Exception:
+   return
+  if not chosen: return
+  sources = [Path(p) for p in chosen if Path(p).is_file()]
+  if not sources: return
+  if hasattr(self, 'status'):
+   self.status.set('[COPYING...] جارٍ نسخ الملفات...')
+   try: self.update_idletasks()
+   except tk.TclError: pass
+
+  def _copy_worker():
+   now_str = stamp(time.time())
+   copied = 0
+   errors = []
+   for src in sources:
+    target = target_dir / src.name
+    counter = 1
+    while target.exists():
+     target = target_dir / f'{src.stem}_{counter}{src.suffix}'
+     counter += 1
+    try:
+     shutil.copy2(str(src), str(target))
+     with connect() as c:
+      c.execute('INSERT INTO activity_log(project,action,details,path,occurred_at) VALUES(?,?,?,?,?)',
+                (self.project, 'نسخ ملف', f'إلى: {target.name}', str(target), now_str))
+     copied += 1
+    except Exception as err:
+     errors.append(f'{src.name}: {err}')
+
+   def _done():
+    if errors:
+     messagebox.showerror('خطأ في النسخ', '\n'.join(errors[:8]), parent=self)
+    if hasattr(self, 'status'):
+     self.status.set(f'تمت إضافة {copied:,} ملف إلى المجلد الحالي')
+    self.rescan()
+
+   try: self.after(0, _done)
+   except tk.TclError: pass
+
+  threading.Thread(target=_copy_worker, daemon=True).start()
 
  def manage_file_links(self, path):
   path = Path(path).resolve()

@@ -20,3 +20,10 @@ from theme import (
     PRI_URGENT, PRI_NORMAL, PRI_LOW,
     TERM_FONT, MONO_FONT, RLM,
 )
+from theme import apply_theme, build_palette, THEME_LABELS, THEME_NAMES, ACCENT_PRESETS, DEFAULT_ACCENTS
+
+# الترجمة (عربي/إنجليزي): tr() تُرجع النص كما هو في العربية، وتترجمه في الإنجليزية.
+# تُركّب طبقة ترجمة Tk هنا حتى تسري على كل الوحدات التي تستورد common.
+from i18n import tr, set_language, get_language, is_english, is_rtl
+import localize_ui
+localize_ui.install()

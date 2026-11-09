@@ -122,6 +122,91 @@ def stamp(t):
  try: return datetime.fromtimestamp(t).strftime('%Y-%m-%d %H:%M')
  except: return '—'
 
+
+def get_app_setting(key, default=None):
+ """يقرأ إعدادًا محفوظًا من جدول app_settings."""
+ try:
+  with connect() as c:
+   row = c.execute('SELECT value FROM app_settings WHERE key=?', (key,)).fetchone()
+   return row['value'] if row is not None else default
+ except Exception:
+  return default
+
+
+def set_app_setting(key, value):
+ """يحفظ إعدادًا في جدول app_settings (يُنشئه أو يحدّثه)."""
+ try:
+  with connect() as c:
+   c.execute('INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)', (str(key), str(value)))
+  return True
+ except Exception:
+  return False
+
+
+# ---------------------------------------------------------------------------
+# صور أغلفة المشاريع المخصصة (كليك يمين على المشروع > اختيار صورة)
+# ---------------------------------------------------------------------------
+COVERS_DIR = LOG / '.covers'
+COVER_EXTENSIONS = ('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.tif', '.tiff')
+
+
+def _ensure_covers_table():
+ try:
+  with connect() as c:
+   c.execute('CREATE TABLE IF NOT EXISTS project_covers(project TEXT PRIMARY KEY, path TEXT NOT NULL, created TEXT)')
+ except Exception:
+  pass
+
+
+def get_project_cover(project):
+ """يرجع مسار صورة الغلاف المخصصة للمشروع إن وُجدت وكانت موجودة على القرص."""
+ try:
+  with connect() as c:
+   row = c.execute('SELECT path FROM project_covers WHERE project=?', (project,)).fetchone()
+  if not row:
+   return None
+  path = Path(row['path'])
+  return path if path.is_file() else None
+ except Exception:
+  return None
+
+
+def set_project_cover(project, source_path):
+ """ينسخ الصورة المختارة إلى مجلد أغلفة المشاريع ويسجلها للمشروع. يرجع المسار الجديد."""
+ source = Path(source_path)
+ if not source.is_file():
+  raise FileNotFoundError(str(source))
+ ext = source.suffix.lower()
+ if ext not in COVER_EXTENSIONS:
+  ext = '.png'
+ _ensure_covers_table()
+ COVERS_DIR.mkdir(parents=True, exist_ok=True)
+ safe_name = ''.join(ch if ch.isalnum() or ch in ('-', '_') else '_' for ch in str(project))[:80] or 'project'
+ target = COVERS_DIR / f'{safe_name}{ext}'
+ for old in COVERS_DIR.glob(f'{safe_name}.*'):
+  if old.resolve() != target.resolve():
+   try: old.unlink()
+   except OSError: pass
+ shutil.copy2(str(source), str(target))
+ with connect() as c:
+  c.execute('INSERT OR REPLACE INTO project_covers(project,path,created) VALUES(?,?,?)',
+            (project, str(target), stamp(time.time())))
+ return target
+
+
+def clear_project_cover(project):
+ """يحذف صورة الغلاف المخصصة للمشروع (الملف والسجل)."""
+ try:
+  with connect() as c:
+   row = c.execute('SELECT path FROM project_covers WHERE project=?', (project,)).fetchone()
+   c.execute('DELETE FROM project_covers WHERE project=?', (project,))
+  if row:
+   try: Path(row['path']).unlink()
+   except OSError: pass
+  return True
+ except Exception:
+  return False
+
 def sizefmt(n):
  for u in ('B', 'KB', 'MB', 'GB'):
   if n < 1024: return f'{n:.0f} {u}'

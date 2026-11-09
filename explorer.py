@@ -362,10 +362,10 @@ class ExplorerMixin(ExplorerActivityMixin):
  def make_filter_pill(self,controls,label,count,selected,command):
   accent,soft=self.type_color(label)
   font=tkfont.Font(family=TERM_FONT,size=9,weight='bold' if selected else 'normal')
-  caption=RLM+str(label)
+  caption=(RLM if is_rtl() else '')+tr(str(label))
   count_text=f'{count:,}'
   count_w=max(28,tkfont.Font(family=MONO_FONT,size=8,weight='bold').measure(count_text)+12)
-  width=max(92,font.measure(str(label))+count_w+26)
+  width=max(92,font.measure(caption)+count_w+26)
   pill=tk.Canvas(controls,width=width,height=32,bg=BG_VOID,highlightthickness=0,cursor='hand2')
   pill._no_global_scroll = True
   
@@ -600,10 +600,10 @@ class ExplorerMixin(ExplorerActivityMixin):
   self.folder_type_menu.delete(0,'end')
   for label in ['الكل']+sorted(folder_counts,key=order):
    count=sum(folder_counts.values()) if label=='الكل' else folder_counts[label]
-   display=RLM+f'{label} · {count:,}'
+   display=(RLM if is_rtl() else '')+f'{tr(label)} · {count:,}'
    self.folder_menu_items[display]=label
    self.folder_type_menu.add_command(label=display,command=lambda value=label:self.type_filter_changed('folder',value))
-  selected=next((display for display,label in self.folder_menu_items.items() if label==self.folder_group),next(iter(self.folder_menu_items),RLM+'الكل'))
+  selected=next((display for display,label in self.folder_menu_items.items() if label==self.folder_group),next(iter(self.folder_menu_items),(RLM if is_rtl() else '')+tr('الكل')))
   self.folder_menu_var.set(selected)
   self.refresh_tag_filters()
 
@@ -985,8 +985,8 @@ class ExplorerMixin(ExplorerActivityMixin):
  def refresh_directory(self):
   if not self.current:return
   try:
-   rel_str = 'المجلد الرئيسي' if self.current==self.root else self.current.relative_to(self.root).as_posix()
-   self.breadcrumb.set(RLM+f'المسار:  {self.project}  /  {rel_str}')
+   rel_str = tr('المجلد الرئيسي') if self.current==self.root else self.current.relative_to(self.root).as_posix()
+   self.breadcrumb.set((RLM if is_rtl() else '')+f'{tr("المسار:")}  {self.project}  /  {rel_str}')
   except ValueError:self.breadcrumb.set(RLM+str(self.current))
   self.view_mode='files';self.collection_button.pack_forget();self._update_top_action_bars()
   preferred=self.project_group if self.mode=='project' else self.folder_group

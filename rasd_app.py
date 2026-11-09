@@ -20,6 +20,7 @@ from tasks_list import TasksListMixin
 from tasks_calendar import TasksCalendarMixin
 from workspace import WorkspaceMixin
 from sync_ops import SyncOpsMixin
+from settings_ui import SettingsMixin, load_ui_settings
 import ui_dialogs
 
 class App(SecurityMixin,
@@ -39,9 +40,12 @@ class App(SecurityMixin,
     TasksCalendarMixin,
     WorkspaceMixin,
     SyncOpsMixin,
+    SettingsMixin,
     tk.Tk):
  def __init__(self):
   super().__init__()
+  # تحميل اللغة والثيم المحفوظين قبل إنشاء أي عنصر واجهة
+  load_ui_settings()
   self._apply_widget_defaults()
   self._install_themed_dialogs()
   self._is_maximized = False
@@ -60,6 +64,9 @@ class App(SecurityMixin,
   self._set_window_icon()
   self.protocol('WM_DELETE_WINDOW',lambda:self.close_app())
   self.setup_style()
+  self._settings_dialog = None
+  self._current_view = None
+  self._install_screen_tracking()
   self.bind_all('<Map>', self._on_widget_map, add='+')
   self.after(10, self._apply_frameless_terminal_window)
   self.show_lock_screen() if self.password_enabled() else self.show_welcome()
@@ -129,6 +136,9 @@ class App(SecurityMixin,
   bar.pack(fill='x', side='top', padx=2, pady=(2, 0))
   bar.pack_propagate(False)
   self._titlebar = bar
+  self._titlebar_lang = get_language()
+  # زر الإعدادات الدائم بجانب اسم البرنامج (يظهر في كل الشاشات)
+  self._settings_button(bar)
 
   title_lbl = tk.Label(
    bar,
@@ -147,6 +157,7 @@ class App(SecurityMixin,
    relief='solid', borderwidth=1, font=(MONO_FONT, 9, 'bold'), padx=6, pady=1, cursor='hand2'
   )
   btn_close.pack(side='right', padx=(3, 6), pady=4)
+  self._titlebar_close_btn = btn_close
 
   btn_max = tk.Button(
    bar, text='[□]', command=self._toggle_window_maximize,
@@ -162,6 +173,7 @@ class App(SecurityMixin,
    relief='solid', borderwidth=1, font=(MONO_FONT, 9, 'bold'), padx=6, pady=1, cursor='hand2'
   )
   btn_min.pack(side='right', padx=3, pady=4)
+  self._titlebar_min_btn = btn_min
 
   for w in (bar, title_lbl):
    w.bind('<ButtonPress-1>', self._start_window_drag)
@@ -277,6 +289,81 @@ class App(SecurityMixin,
    s.map(bar,background=[('active',BG_HOVER),('pressed',ACCENT_MATRIX)],arrowcolor=[('active',ACCENT_MATRIX),('pressed',BG_VOID)])
 
  def clear(self):
+  keep = {id(getattr(self, '_titlebar', None)), id(getattr(self, '_settings_dialog', None))}
   for w in self.winfo_children():
-   if w is not getattr(self, '_titlebar', None):
+   if id(w) not in keep:
     w.destroy()
+
+ # ---------------------------------------------------------------------------
+ # إعادة بناء الشاشة الحالية بعد تغيير الثيم أو اللغة
+ # ---------------------------------------------------------------------------
+ _TRACKED_SCREENS = (
+  'show_welcome', 'show_home', 'build_explorer', 'show_tasks',
+  'show_task_calendar', 'show_search_page', 'show_lock_screen',
+  'show_collection', 'show_files_collection', 'show_specialty',
+  'show_folder_mode',
+ )
+
+ def _install_screen_tracking(self):
+  """يلفّ دوال عرض الشاشات لتسجيل آخر شاشة مع معاملاتها، لإعادة بنائها عند تغيير الثيم."""
+  import functools
+  for name in self._TRACKED_SCREENS:
+   original = getattr(self, name, None)
+   if original is None:
+    continue
+   def make(original, name):
+    @functools.wraps(original)
+    def wrapper(*args, **kwargs):
+     self._current_view = (name, args, kwargs)
+     return original(*args, **kwargs)
+    return wrapper
+   setattr(self, name, make(original, name))
+
+ def rebuild_current_screen(self):
+  view = getattr(self, '_current_view', None)
+  if not view:
+   return
+  name, args, kwargs = view
+  try:
+   getattr(self, name)(*args, **kwargs)
+  except Exception:
+   pass
+
+ def _restyle_titlebar(self):
+  """يحدّث ألوان شريط العنوان المخصص بعد تغيير الثيم (ويعيد بناءه عند تغيير اتجاه اللغة)."""
+  if getattr(self, '_titlebar_lang', None) != get_language():
+   self._rebuild_titlebar()
+   return
+  bar = getattr(self, '_titlebar', None)
+  if bar is None:
+   return
+  try:
+   bar.configure(bg=BG_VOID, highlightbackground=ACCENT_MATRIX)
+   if getattr(self, '_titlebar_label', None):
+    self._titlebar_label.configure(bg=BG_VOID, fg=ACCENT_MATRIX)
+   for btn_name in ('_titlebar_max_btn', '_titlebar_min_btn', '_titlebar_close_btn'):
+    btn = getattr(self, btn_name, None)
+    if btn is not None:
+     btn.configure(activebackground=ACCENT_MATRIX, activeforeground=BG_VOID)
+   if getattr(self, '_settings_btn', None):
+    self._settings_btn.configure(bg=BG_HEADER, fg=ACCENT_MATRIX,
+                                 activebackground=ACCENT_MATRIX, activeforeground=BG_VOID)
+  except tk.TclError:
+   pass
+
+ def _rebuild_titlebar(self):
+  """يعيد بناء شريط العنوان عند تغيير اللغة لتنعكس الجهة بشكل صحيح."""
+  old = getattr(self, '_titlebar', None)
+  self._titlebar = None
+  self._titlebar_label = None
+  self._settings_btn = None
+  if old is not None:
+   try: old.destroy()
+   except tk.TclError: pass
+  self._build_custom_titlebar()
+  bar = self._titlebar
+  siblings = [w for w in self.winfo_children() if w is not bar]
+  if bar is not None and siblings:
+   try: bar.pack_configure(before=siblings[0])
+   except tk.TclError: pass
+  self._restyle_titlebar()

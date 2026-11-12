@@ -22,6 +22,7 @@ import repositories  # noqa: E402
 import i18n  # noqa: E402
 import localize_ui  # noqa: E402
 import preview_render  # noqa: E402
+import file_ops  # noqa: E402
 
 
 def tearDownModule():
@@ -173,6 +174,15 @@ class CoreTests(unittest.TestCase):
             child.master = parent
             self.assertEqual(localize_ui._mirror_options({'side': 'left'}, child)['side'], 'left')
 
+            natural = FakeWidget()
+            natural._rasd_natural_layout = True
+            opts = localize_ui._mirror_options({'side': 'left', 'anchor': 'e', 'sticky': 'ew'}, natural)
+            self.assertEqual(opts, {'side': 'left', 'anchor': 'e', 'sticky': 'ew'})
+            nested = FakeWidget()
+            nested.master = natural
+            self.assertEqual(localize_ui._mirror_options({'side': 'left', 'anchor': 'e'}, nested),
+                             {'side': 'left', 'anchor': 'e'})
+
             self.assertEqual(localize_ui._mirror_options({'side': 'left'}, FakeWidget())['side'], 'right')
             self.assertEqual(localize_ui._mirror_options({'side': 'left'})['side'], 'right')
 
@@ -233,6 +243,43 @@ class CoreTests(unittest.TestCase):
         legacy.write_text('@echo off\n', encoding='utf-8')
         self.assertFalse(update_utils.launch_pending_update_at_start())
         self.assertFalse(legacy.exists())
+
+    def test_rename_migrates_related_rows(self):
+        root = storage.LOG / 'RenameMigrateProj'
+        old = root / 'OldFolder'
+        new = root / 'NewFolder'
+        old_file = str(old / 'a.txt')
+        new_file = str(new / 'a.txt')
+        now = storage.stamp(time.time())
+        with storage.connect() as c:
+            c.execute('insert or replace into files(path,project,rel,name,ext,size,mtime,last_open,indexed) '
+                      'values(?,?,?,?,?,?,?,?,?)',
+                      (old_file, 'RenameMigrateProj', 'OldFolder/a.txt', 'a.txt', '.txt', 1, 1.0, None, 'x'))
+            c.execute('insert or replace into tags(path,tag) values(?,?)', (old_file, 'tag1'))
+            c.execute('insert or replace into folder_tags(project,path,tag,created) values(?,?,?,?)',
+                      ('RenameMigrateProj', 'OldFolder', 'ftag', now))
+            c.execute('insert or replace into favorites(project,path,kind,created) values(?,?,?,?)',
+                      ('RenameMigrateProj', old_file, 'file', now))
+            c.execute('insert or ignore into file_links(project,path1,path2) values(?,?,?)',
+                      ('RenameMigrateProj', old_file, old_file))
+            c.execute('insert into file_open_history(project,path,opened_at) values(?,?,?)',
+                      ('RenameMigrateProj', old_file, now))
+        fake = type('FakeApp', (), {'root': root, 'project': 'RenameMigrateProj'})()
+        file_ops.FileOpsMixin._migrate_renamed_path(fake, old, new)
+        with storage.connect() as c:
+            file_row = c.execute('select path,rel,name from files where project=?', ('RenameMigrateProj',)).fetchone()
+            tag_row = c.execute('select path from tags where tag=?', ('tag1',)).fetchone()
+            folder_row = c.execute('select path from folder_tags where project=?', ('RenameMigrateProj',)).fetchone()
+            fav_row = c.execute('select path from favorites where project=?', ('RenameMigrateProj',)).fetchone()
+            link_row = c.execute('select path1,path2 from file_links where project=?', ('RenameMigrateProj',)).fetchone()
+            hist_row = c.execute('select path from file_open_history where project=?', ('RenameMigrateProj',)).fetchone()
+        self.assertEqual(file_row['path'], new_file)
+        self.assertEqual(file_row['rel'], 'NewFolder/a.txt')
+        self.assertEqual(tag_row['path'], new_file)
+        self.assertEqual(folder_row['path'], 'NewFolder')
+        self.assertEqual(fav_row['path'], new_file)
+        self.assertEqual(tuple(link_row), (new_file, new_file))
+        self.assertEqual(hist_row['path'], new_file)
 
     def test_project_summary_reads_counts_tags_and_cover(self):
         root = storage.LOG / 'SummaryProj'

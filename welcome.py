@@ -68,6 +68,9 @@ class WelcomeMixin:
   bg=tk.Frame(self,bg=BG_VOID);bg.pack(fill='both',expand=True)
   
   card=tk.Frame(bg,bg=BG_PANEL,highlightbackground=ACCENT_MATRIX,highlightthickness=1)
+  # بطاقة الويلكوم مبنية أصلًا بتخطيط LTR؛ نمنع عكسها في الإنجليزية
+  # لتظهر بنفس الشكل النظيف الذي تظهر به في العربية.
+  card._rasd_natural_layout = True
   card.place(relx=.5,rely=.5,anchor='center',relwidth=.84,relheight=.86)
   
   term_title=tk.Frame(card,bg=BG_HEADER,height=32);term_title.pack(fill='x');term_title.pack_propagate(False)
@@ -85,7 +88,7 @@ class WelcomeMixin:
   tk.Label(content, text=ascii_art, bg=BG_PANEL, fg=ACCENT_MATRIX, font=(MONO_FONT, 10, 'bold'), justify='left').pack(anchor='nw', pady=(0, 8))
   
   sys_info = (
-   "OS: Rasd Engineering Core v0.44.3 [Linux/Win32 Hybrid]\n"
+   "OS: Rasd Engineering Core v0.44.4 [Linux/Win32 Hybrid]\n"
    "KERNEL: Python 3.x Tkinter Tiling Engine\n"
    "UPTIME: Ready for Operation\n"
    "DEVELOPER: ENG. Amr Hesham [Alexandria, Egypt]\n"

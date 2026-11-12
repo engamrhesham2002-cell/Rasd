@@ -20,8 +20,31 @@ _ANCHOR_MIRROR = {'e': 'w', 'w': 'e', 'ne': 'nw', 'nw': 'ne', 'se': 'sw', 'sw': 
 _JUSTIFY_MIRROR = {'right': 'left', 'left': 'right'}
 
 
+def _natural_layout(widget):
+    """هل هذا العنصر أو أحد آبائه يطلب تخطيطًا طبيعيًا غير معكوس؟
+
+    يُستخدم في شاشات مبنية أصلًا بتخطيط LTR (الترحيب وشريط العنوان) حتى
+    تبقى بنفس الشكل في العربية والإنجليزية بدل انقلابها الكامل.
+    """
+    node = widget
+    depth = 0
+    while node is not None and depth < 60:
+        if getattr(node, '_rasd_natural_layout', False):
+            return True
+        try:
+            node = node.master
+        except Exception:
+            node = None
+        depth += 1
+    return False
+
+
 def _mirror_options(kw, widget=None):
     if is_rtl():
+        return kw
+    # التخطيط الطبيعي: لا نعكس أي خيار (side/anchor/justify/sticky) للعنصر
+    # أو لأي عنصر داخل حاوية طلبت ذلك.
+    if widget is not None and _natural_layout(widget):
         return kw
     # يمكن لعنصر أو حاوية أن تطلب عدم عكس جهة الترتيب (side) مع بقاء عكس
     # المحاذاة (anchor/justify). يُستخدم في أشرطة التنقل حتى لا ينعكس ترتيب
@@ -72,7 +95,7 @@ def _patch_text_widget(cls):
     original_configure = cls.configure
 
     def __init__(self, master=None, cnf=None, **kw):
-        kw = _mirror_options(kw)
+        kw = _mirror_options(kw, master)
         if 'text' in kw:
             _remember(self, kw['text'])
             kw['text'] = _translate_value(kw['text'])
@@ -104,7 +127,7 @@ def _patch_init_configure(cls):
     original_configure = cls.configure
 
     def __init__(self, master=None, **kw):
-        kw = _mirror_options(kw)
+        kw = _mirror_options(kw, master)
         if 'text' in kw:
             _remember(self, kw['text'])
             kw['text'] = _translate_value(kw['text'])

@@ -133,6 +133,9 @@ class App(SecurityMixin,
 
  def _build_custom_titlebar(self):
   bar = tk.Frame(self, bg=BG_VOID, height=36, highlightbackground=ACCENT_MATRIX, highlightthickness=1)
+  # شريط العنوان يبقى بتخطيطه الطبيعي في اللغتين: العنوان والمسار يسارًا
+  # وأزرار التصغير/التكبير/الإغلاق يمينًا كما في النسخة العربية.
+  bar._rasd_natural_layout = True
   bar.pack(fill='x', side='top', padx=2, pady=(2, 0))
   bar.pack_propagate(False)
   self._titlebar = bar

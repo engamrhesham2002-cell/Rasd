@@ -320,6 +320,7 @@ class FileOpsMixin:
   if len(selected) == 1:
    if p.is_dir(): menu.add_command(label='📂 فتح المجلد', command=lambda: self.navigate_to(p))
    else: menu.add_command(label='📄 فتح الملف', command=lambda: self.open_file(p))
+   menu.add_command(label='✏️ إعادة تسمية (F2)', command=lambda: self.rename_selected_path(tree))
    menu.add_separator()
 
   if len(selected) == 1 and p.is_file():
@@ -367,6 +368,129 @@ class FileOpsMixin:
    menu.add_command(label=f'🗑 إرسال إلى سلة المحذوفات ({len(selected)})', command=lambda: self.delete_selected_paths(tree), foreground=ACCENT_DANGER)
       
   menu.tk_popup(e.x_root, e.y_root)
+
+ def rename_selected_path(self, tree=None):
+  """إعادة تسمية ملف أو مجلد واحد داخل المشروع مع ترحيل مراجعه في قاعدة البيانات."""
+  tree = tree or self.current_selection_tree()
+  if tree is None or tree is not getattr(self, 'file_tree', None): return
+  paths = [p for p in self.selected_paths(tree) if p.exists()]
+  if len(paths) != 1:
+   messagebox.showwarning('إعادة تسمية', 'اختر ملفًا أو مجلدًا واحدًا فقط لإعادة تسميته.', parent=self)
+   return
+  src = paths[0].resolve()
+  root = self.root.resolve() if getattr(self, 'root', None) else None
+  if root is None: return
+  try: src.relative_to(root)
+  except ValueError:
+   messagebox.showwarning('إعادة تسمية', 'لا يمكن إعادة تسمية عنصر خارج مجلد المشروع.', parent=self)
+   return
+  if src == root:
+   messagebox.showwarning('إعادة تسمية', 'لا يمكن إعادة تسمية مجلد المشروع نفسه.', parent=self)
+   return
+
+  new_name = simpledialog.askstring('إعادة تسمية', 'الاسم الجديد:', parent=self, initialvalue=src.name)
+  if new_name is None: return
+  new_name = new_name.strip().rstrip('. ')
+  if not new_name or new_name in ('.', '..'):
+   messagebox.showerror('اسم غير صالح', 'اكتب اسمًا صالحًا للملف أو المجلد.', parent=self)
+   return
+  if re.search(r'[<>:"/\\|?*\x00-\x1f]', new_name):
+   messagebox.showerror('اسم غير صالح', 'الاسم يحتوي على رموز غير مسموح بها في ويندوز.', parent=self)
+   return
+  if new_name == src.name: return
+
+  dest = src.with_name(new_name)
+  same_path = os.path.normcase(str(dest)) == os.path.normcase(str(src))
+  if dest.exists() and not same_path:
+   messagebox.showerror('موجود', 'يوجد ملف أو مجلد بهذا الاسم بالفعل.', parent=self)
+   return
+  try:
+   os.rename(str(src), str(dest))
+  except OSError as err:
+   messagebox.showerror('خطأ', f'تعذر إعادة التسمية:\n{err}', parent=self)
+   return
+
+  # لو كنا داخل المجلد الذي أُعيدت تسميته، نحدّث المسار الحالي أولًا.
+  current = getattr(self, 'current', None)
+  if current:
+   try:
+    resolved_current = Path(current).resolve()
+    rel_inside = resolved_current.relative_to(src)
+    self.current = dest / rel_inside
+   except ValueError:
+    pass
+
+  try: self._migrate_renamed_path(src, dest)
+  except Exception: pass
+
+  if hasattr(self, 'status'):
+   self.status.set(f'تمت إعادة التسمية: {new_name}')
+  try: self.log_activity('إعادة تسمية', f'{src.name} ← {new_name}', path=dest)
+  except Exception: pass
+
+  target = str(dest.resolve())
+  files_view = getattr(self, 'view_mode', 'files') == 'files'
+  if files_view:
+   self.refresh_directory()
+  else:
+   self.populate()
+  if hasattr(self, 'run_when_populate_rendered'):
+   self.run_when_populate_rendered(lambda: self._select_renamed_path(target))
+  else:
+   self.after(250, lambda: self._select_renamed_path(target))
+
+ def _select_renamed_path(self, target):
+  tree = getattr(self, 'file_tree', None)
+  if tree is None: return
+  try:
+   if not tree.winfo_exists() or not tree.exists(target): return
+   tree.selection_set(target); tree.focus(target); tree.see(target)
+   self.on_tree_selection(tree)
+  except tk.TclError:
+   pass
+
+ def _migrate_renamed_path(self, old_path, new_path):
+  """يحدّث كل مراجع المسار القديم (والعناصر التابعة له) إلى المسار الجديد."""
+  root = self.root.resolve()
+  old_abs = str(old_path.resolve()); new_abs = str(new_path.resolve())
+  old_rel = old_path.resolve().relative_to(root).as_posix()
+  new_rel = new_path.resolve().relative_to(root).as_posix()
+  sep = os.sep
+
+  def migrate_column(c, table, column, old_value, new_value, separator, project=None):
+   where = f'{column} = ? OR substr({column}, 1, ?) = ?'
+   params = [new_value, len(old_value) + 1]
+   if project is not None:
+    where = f'project = ? AND ({where})'
+    params.append(project)
+   params.extend([old_value, len(old_value) + 1, old_value + separator])
+   c.execute(
+    f'UPDATE {table} SET {column} = ? || substr({column}, ?) WHERE {where}',
+    params
+   )
+
+  with connect() as c:
+   migrate_column(c, 'files', 'path', old_abs, new_abs, sep)
+   migrate_column(c, 'files', 'rel', old_rel, new_rel, '/', self.project)
+   c.execute('UPDATE files SET name=? WHERE path=?', (new_path.name, new_abs))
+   for table, columns, old_value, new_value, separator, scoped in (
+    ('tags', ('path',), old_abs, new_abs, sep, False),
+    ('folder_tags', ('path',), old_rel, new_rel, '/', True),
+    ('favorites', ('path',), old_abs, new_abs, sep, True),
+    ('file_links', ('path1', 'path2'), old_abs, new_abs, sep, True),
+    ('file_open_history', ('path',), old_abs, new_abs, sep, True),
+    ('file_changes', ('path',), old_abs, new_abs, sep, True),
+    ('recycle_bin', ('original_path', 'bin_path'), old_abs, new_abs, sep, True),
+    ('activity_log', ('path',), old_abs, new_abs, sep, True),
+   ):
+    for column in columns:
+     try: migrate_column(c, table, column, old_value, new_value, separator,
+                         self.project if scoped else None)
+     except sqlite3.OperationalError: pass
+   try:
+    migrate_column(c, 'project_view_state', 'current_rel', old_rel, new_rel, '/', self.project)
+   except sqlite3.OperationalError:
+    pass
 
  def _paste_into(self, target_dir):
   old_current = self.current

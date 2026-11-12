@@ -263,6 +263,7 @@ class ExplorerMixin(ExplorerActivityMixin):
   self.bind_all('<Alt-Right>', lambda e: (self.go_forward(), 'break') if self._in_explorer_context() else None)
   self.bind_all('<Alt-Up>', lambda e: (self.go_up(), 'break') if self._in_explorer_context() else None)
   self.bind_all('<F5>', lambda e: (self.rescan(), 'break') if self._in_explorer_context() else None)
+  self.bind_all('<F2>', lambda e: (self.rename_selected_path(self.current_selection_tree()), 'break') if self._in_explorer_context() and not self._is_typing_in_input(e) else None)
   self.bind_all('<Escape>', lambda e: (self._handle_escape_shortcut(), 'break') if self._in_explorer_context() else None)
 
  def _handle_delete_shortcut(self, tree=None):

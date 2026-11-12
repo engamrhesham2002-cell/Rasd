@@ -1037,6 +1037,24 @@ EN.update({
     'إلى: ': 'To: ',
 })
 
+# --- إعادة التسمية ---
+EN.update({
+    '✏️ إعادة تسمية (F2)': '✏️ Rename (F2)',
+    'إعادة تسمية': 'Rename',
+    'الاسم الجديد:': 'New name:',
+    'اكتب اسمًا صالحًا للملف أو المجلد.': 'Enter a valid file or folder name.',
+    'الاسم يحتوي على رموز غير مسموح بها في ويندوز.':
+        'The name contains characters that are not allowed in Windows.',
+    'اختر ملفًا أو مجلدًا واحدًا فقط لإعادة تسميته.':
+        'Select only one file or folder to rename.',
+    'لا يمكن إعادة تسمية عنصر خارج مجلد المشروع.':
+        'An item outside the project folder cannot be renamed.',
+    'لا يمكن إعادة تسمية مجلد المشروع نفسه.':
+        'The project root folder cannot be renamed.',
+    'تعذر إعادة التسمية:\n': 'Could not rename:\n',
+    'تمت إعادة التسمية: ': 'Renamed: ',
+})
+
 # أي نص في القاموس يبدأ أو ينتهي بمسافة يظهر عادة داخل جملة مركّبة (f-string)،
 # لذا نضيفه كقاعدة عبارة أيضًا حتى يُترجم داخل السياق.
 PHRASES.extend(

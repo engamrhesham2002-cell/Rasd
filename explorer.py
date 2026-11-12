@@ -810,7 +810,13 @@ class ExplorerMixin(ExplorerActivityMixin):
    except (OSError,ValueError):pass
   if image is None and p.suffix.lower() in ('.png','.jpg','.jpeg','.bmp','.gif','.tif','.tiff'):
    try:
-    with Image.open(p) as source:image=source.convert('RGB').copy()
+    # لا نفكّ صورًا ضخمة على خيط الواجهة أثناء رسم شريط الملفات المرتبطة
+    if p.stat().st_size > 25*1024*1024:return self.file_icon_image(str(p))
+    with Image.open(p) as source:
+     try:source.draft('RGB',(120,90))
+     except Exception:pass
+     if source.width*source.height > 12_000_000:return self.file_icon_image(str(p))
+     image=source.convert('RGB').copy()
    except (OSError,ValueError):pass
   if image is None:return self.file_icon_image(str(p))
   image=ImageOps.fit(image,(44,30),method=Image.Resampling.BILINEAR);photo=ImageTk.PhotoImage(image);return photo

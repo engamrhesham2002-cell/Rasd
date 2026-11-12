@@ -21,6 +21,7 @@ import update_utils  # noqa: E402
 import repositories  # noqa: E402
 import i18n  # noqa: E402
 import localize_ui  # noqa: E402
+import preview_render  # noqa: E402
 
 
 def tearDownModule():
@@ -138,6 +139,20 @@ class CoreTests(unittest.TestCase):
         installer.write_bytes(b'tampered-bytes')
         self.assertFalse(update_utils.launch_pending_update_at_start())
         self.assertFalse(update_utils.UPDATE_PENDING.exists())
+
+    def test_pdf_render_scale_caps_huge_pages(self):
+        for w, h in ((595, 842), (3370, 2384), (20000, 15000), (200000, 150000), (2000000, 1500000)):
+            scale = preview_render.pdf_render_scale(w, h)
+            self.assertGreater(scale, 0)
+            self.assertLessEqual(w * scale, preview_render.MAX_PDF_PIXEL_SIDE + 1)
+            self.assertLessEqual(h * scale, preview_render.MAX_PDF_PIXEL_SIDE + 1)
+            self.assertLessEqual((w * scale) * (h * scale), preview_render.MAX_PDF_PIXELS * 1.01)
+
+    def test_pdf_render_scale_keeps_normal_pages_readable(self):
+        scale = preview_render.pdf_render_scale(595, 842)
+        self.assertLessEqual(595 * scale, 761)
+        self.assertGreaterEqual(595 * scale, 400)
+        self.assertGreater(scale, 0.35)
 
     def test_nav_bar_side_not_mirrored_in_english(self):
         class FakeWidget:

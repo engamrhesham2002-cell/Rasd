@@ -3,6 +3,29 @@ from common import *
 from update_utils import *
 from storage import *
 
+# حدود أمان للمعاينة: أي صفحة PDF أو صورة مضمنة أو صورة عادية تتجاوز هذه
+# الحدود لا تُفكّ ضغطها كاملة حتى لا يستهلك البرنامج كل الذاكرة ويتجمد/يُغلق.
+MAX_PDF_PIXEL_SIDE = 1600        # أقصى طول/عرض لبكسلات صفحة PDF
+MAX_PDF_PIXELS = 4_000_000       # أقصى عدد بكسلات لصفحة PDF
+MAX_IMAGE_PREVIEW_PIXELS = 40_000_000
+MAX_EMBEDDED_IMAGE_PIXELS = 24_000_000
+MAX_DWG_SCAN_BYTES = 32 * 1024 * 1024
+MAX_DWG_PLOT_BYTES = 80 * 1024 * 1024
+MAX_DXF_BYTES = 45 * 1024 * 1024
+
+def pdf_render_scale(width,height):
+    """مقياس رسم آمن لصفحة PDF مع سقف صارم للبكسلات (بدون حد أدنى)."""
+    width=max(1.0,float(width or 1.0))
+    height=max(1.0,float(height or 1.0))
+    if width != width or height != height:width=height=1.0
+    max_side=max(width,height)
+    scale=min(1.2,760.0/max_side)
+    scale=min(scale,MAX_PDF_PIXEL_SIDE/width,MAX_PDF_PIXEL_SIDE/height)
+    est_pixels=(width*scale)*(height*scale)
+    if est_pixels>MAX_PDF_PIXELS:
+        scale*=math.sqrt(MAX_PDF_PIXELS/est_pixels)
+    return max(scale,1e-4)
+
 class PreviewRenderMixin:
  def build_preview(self,token,p,meta,page,key=None):
   if token != getattr(self, 'preview_token', 0):
@@ -23,6 +46,13 @@ class PreviewRenderMixin:
    ext=p.suffix.lower()
    if ext in ('.png','.jpg','.jpeg','.bmp','.gif','.tif','.tiff'):
     with Image.open(p) as im:
+     # صور ضخمة جدًا (سكانات/لوحات) لا تُفكّ كاملة داخل المعاينة
+     if ext in ('.jpg','.jpeg'):
+      try:im.draft('RGB',(1200,1000))
+      except Exception:pass
+     if int(im.width)*int(im.height)>MAX_IMAGE_PREVIEW_PIXELS:
+      self.previewq.put(('image',token,self.make_card(p.name,'صورة كبيرة جدًا','هذه الصورة أكبر من أن تُعرض مباشرة هنا؛ انقر مرتين لفتحها في العارض الخارجي.'),meta,key,''))
+      return
      frame=im.convert('RGB');frame.thumbnail((850,750),Image.Resampling.BILINEAR)
      self.previewq.put(('image',token,self.frame_image(frame,f'صورة {ext[1:].upper()} — {im.width}×{im.height}'),meta,key,''))
      return
@@ -34,11 +64,16 @@ class PreviewRenderMixin:
      total=max(1,len(doc));page=min(max(0,page),total-1);self.preview_page=page
      pdf_page=doc[page]
      rect=pdf_page.rect
-     max_side=max(rect.width, rect.height, 1.0)
-     # حساب مقياس الرسم الذكي لتجنب ريندر لوحات A0 الضخمة بدقة مفرطة تسبب بطء البرنامج
-     target_scale=min(1.2, max(0.35, 760.0 / max_side))
-     pix=pdf_page.get_pixmap(matrix=fitz.Matrix(target_scale, target_scale), alpha=False)
+     # صفحات CAD المصدَّرة PDF قد تكون أبعادها أكبر بمئات المرات من A4.
+     # الحد الأدنى القديم (0.35) كان ينتج pixmap بمليارات البكسلات فيستهلك
+     # كل الذاكرة ويجمّد البرنامج. نحسب المقياس من أبعاد الصفحة مع سقف
+     # صارم للبكسلات، بدون أي حد أدنى.
+     width=max(1.0,float(getattr(rect,'width',1.0) or 1.0))
+     height=max(1.0,float(getattr(rect,'height',1.0) or 1.0))
+     target_scale=pdf_render_scale(width,height)
+     pix=pdf_page.get_pixmap(matrix=fitz.Matrix(target_scale,target_scale),alpha=False)
      img=Image.frombytes('RGB',[pix.width,pix.height],pix.samples)
+     del pix
     finally:
      doc.close()
     if token != getattr(self, 'preview_token', 0):
@@ -67,7 +102,9 @@ class PreviewRenderMixin:
     txt=p.read_text(encoding='utf-8',errors='replace').splitlines()[:22]
     self.previewq.put(('image',token,self._text_image(p.name,f'معاينة ملف نصي ({ext})',txt or ['الملف فارغ.']),meta,key,''));return
    if ext in ('.dwg','.dxf'):
-    img,note=self._cad_preview(p);self.previewq.put(('image',token,img,meta+f'\n{RLM}{note}',key,note));return
+    img,note=self._cad_preview(p,token)
+    if token != getattr(self,'preview_token',0):return
+    self.previewq.put(('image',token,img,meta+f'\n{RLM}{note}',key,note));return
    self.previewq.put(('image',token,self.make_card(p.name,classify(ext),'المعاينة المباشرة غير متاحة لهذا الامتداد؛ انقر مرتين لفتح الملف.'),meta,key,''))
   except Exception as e:
    self.previewq.put(('image',token,self.make_card(p.name,'تعذرت المعاينة',str(e)[:120]),meta,key,''))
@@ -126,7 +163,7 @@ class PreviewRenderMixin:
   d.rectangle((0,0,759,539),outline=(28,42,56),width=1)
   return im
 
- def _cad_preview(self,p):
+ def _cad_preview(self,p,token=None):
   ext=p.suffix.lower()
   ezdxf=None
   try:import ezdxf
@@ -137,6 +174,10 @@ class PreviewRenderMixin:
     with Image.open(cached) as im:return im.convert('RGB').copy(),'معاينة CAD جاهزة من الذاكرة السريعة'
   except Exception:cached=None
   if ext=='.dxf' and ezdxf:
+   try:dxf_size=p.stat().st_size
+   except OSError:dxf_size=0
+   if dxf_size>MAX_DXF_BYTES:
+    return self.make_card(p.name,'DXF كبير الحجم',f'حجم الملف {sizefmt(dxf_size)} أكبر من حد المعاينة الآمن؛ انقر مرتين لفتحه في برنامج CAD.'),'ملف DXF كبير جدًا — تم تجاوز المعاينة المباشرة لحماية البرنامج'
    try:
     doc=ezdxf.readfile(str(p));msp=doc.modelspace();pts=[];segs=[]
     for e in msp:
@@ -166,7 +207,7 @@ class PreviewRenderMixin:
      return im,f'تم رسم {len(segs)} عنصر هندسي من ملف DXF'
    except Exception as e:
     return self.make_card(p.name,'DXF',f'تعذر تحليل DXF: {str(e)[:90]}'),'تعذرت معاينة DXF'
-  thumb,note=self._extract_dwg_thumbnail(p)
+  thumb,note=self._extract_dwg_thumbnail(p,token)
   if thumb:
    framed=self.frame_image(thumb,note)
    if cached and 'AutoCAD' in note:
@@ -175,20 +216,27 @@ class PreviewRenderMixin:
    return framed,note
   return self.make_card(p.name,'لوحة AutoCAD DWG',note),note
 
- def _extract_dwg_thumbnail(self,p):
+ def _fit_embedded_image(self,raw,min_side=48):
+  try:
+   im=Image.open(io.BytesIO(raw));w,h=im.size
+   if w<min_side or h<min_side or w*h>MAX_EMBEDDED_IMAGE_PIXELS:return None
+   im.load();out=im.convert('RGB');out.thumbnail((900,750),Image.Resampling.BILINEAR)
+   return out
+  except Exception:return None
+
+ def _extract_dwg_thumbnail(self,p,token=None):
   header_preview=None;header_note='معاينة DWG مضمنة من داخل الملف'
   try:
-   data=p.read_bytes()
+   # لا نقرأ ملف DWG كاملًا في الذاكرة (قد يتجاوز 100 ميجابايت)؛
+   # نمسح أول 32 ميجابايت فقط حيث توجد رؤوس المقاطع والمعاينات المضمنة.
+   with p.open('rb') as fh:data=fh.read(MAX_DWG_SCAN_BYTES)
    for sig,ext in ((b'\x89PNG\r\n\x1a\n','PNG'),(b'\xff\xd8\xff','JPEG')):
     idx=data.find(sig)
     while idx!=-1:
-     try:
-      im=Image.open(io.BytesIO(data[idx:idx+1_500_000]));im.load()
-      if im.width>=48 and im.height>=48:
-       out=im.convert('RGB');out.thumbnail((900,750),Image.Resampling.BILINEAR)
-       if max(out.size)>=360:return out,f'معاينة DWG مضمنة ({ext})'
-       header_preview=out;break
-     except Exception:pass
+     out=self._fit_embedded_image(data[idx:idx+1_500_000])
+     if out is not None:
+      if max(out.size)>=360:return out,f'معاينة DWG مضمنة ({ext})'
+      header_preview=out;break
      idx=data.find(sig,idx+4)
    if len(data)>=32 and data[:2]==b'AC' and header_preview is None:
     sentinel=bytes.fromhex('1F256D07D43628289D57CA3F9D44102B')
@@ -201,24 +249,31 @@ class PreviewRenderMixin:
      try:
       count=data[start+4];cursor=start+5
       for _ in range(min(count,12)):
+       if cursor+9>len(data):break
        code=data[cursor];offset=int.from_bytes(data[cursor+1:cursor+5],'little');size=int.from_bytes(data[cursor+5:cursor+9],'little');cursor+=9
        if offset<=0 or size<=40 or offset+size>len(data):continue
        chunk=data[offset:offset+size]
        if code==6 or chunk.startswith(b'\x89PNG\r\n\x1a\n'):
-        im=Image.open(io.BytesIO(chunk));im.load();out=im.convert('RGB');out.thumbnail((900,750),Image.Resampling.BILINEAR);header_preview=out;header_note='معاينة DWG مضمنة (PNG)';break
+        out=self._fit_embedded_image(chunk,32)
+        if out is not None:header_preview=out;header_note='معاينة DWG مضمنة (PNG)';break
        if code==2:
         bmp=chunk if chunk[:2]==b'BM' else b'BM'+(len(chunk)+14).to_bytes(4,'little')+b'\x00\x00\x00\x00'+int(54).to_bytes(4,'little')+chunk
         for raw in (bmp,chunk):
-         try:
-          im=Image.open(io.BytesIO(raw));im.load()
-          if im.width>=32 and im.height>=32:
-           out=im.convert('RGB');out.thumbnail((900,750),Image.Resampling.BILINEAR);header_preview=out;header_note='معاينة DWG مضمنة من رأس اللوحة';break
-         except Exception:pass
+         out=self._fit_embedded_image(raw,32)
+         if out is not None:
+          header_preview=out;header_note='معاينة DWG مضمنة من رأس اللوحة';break
         if header_preview:break
       if header_preview:break
      except Exception:continue
   except Exception:pass
-  acad_img,acad_note=self._plot_dwg_with_autocad(p)
+  try:dwg_size=p.stat().st_size
+  except OSError:dwg_size=0
+  if token is not None and token != getattr(self,'preview_token',0):
+   return None,'تم إلغاء معاينة اللوحة السابقة'
+  if dwg_size>MAX_DWG_PLOT_BYTES:
+   acad_img,acad_note=None,'تم تجاوز الرسم عبر AutoCAD لأن ملف اللوحة كبير جدًا'
+  else:
+   acad_img,acad_note=self._plot_dwg_with_autocad(p,token)
   if acad_img:return acad_img,acad_note
   if header_preview is not None:
    if max(header_preview.size)<260:
@@ -246,7 +301,7 @@ class PreviewRenderMixin:
   self._accoreconsole_path=found[0] if found else False
   return found[0] if found else None
 
- def _plot_dwg_with_autocad(self,p):
+ def _plot_dwg_with_autocad(self,p,token=None):
   console=self._find_accoreconsole()
   if not console:return None,'accoreconsole غير موجود'
   fitz=None
@@ -254,6 +309,7 @@ class PreviewRenderMixin:
   except ImportError:pass
   workdir=Path(tempfile.mkdtemp(prefix='rasd_dwg_'))
   try:
+   if token is not None and token != getattr(self,'preview_token',0):return None,'تم إلغاء معاينة اللوحة السابقة'
    src=workdir/'input.dwg';out_png=workdir/'preview.png';out_pdf=workdir/'preview.pdf';scr=workdir/'render.scr'
    shutil.copy2(p,src)
    png_path=str(out_png).replace('\\','/');pdf_path=str(out_pdf).replace('\\','/')
@@ -272,6 +328,7 @@ class PreviewRenderMixin:
     with Image.open(out_png) as im:
      rendered=self._prepare_rendered_cad_image(im)
      if rendered:return rendered,'معاينة مرسومة بدقة عبر AutoCAD'
+   if token is not None and token != getattr(self,'preview_token',0):return None,'تم إلغاء معاينة اللوحة السابقة'
    if fitz:
     pdf_layouts=[]
     for layout in ('Model','Layout1','Layout2'):
@@ -281,14 +338,22 @@ class PreviewRenderMixin:
       f'_.-PLOT _Y "{layout}" "AutoCAD PDF (General Documentation).pc3" "ISO full bleed A3 (420.00 x 297.00 MM)" _M _L _N _E _F _C _Y "." _Y _N "{cand_path}" _N _Y'
      ])
     scr.write_text('\n'.join(['FILEDIA 0','CMDDIA 0','BACKGROUNDPLOT 0',*pdf_layouts,'_.QUIT _Y','']),encoding='utf-8')
+    if token is not None and token != getattr(self,'preview_token',0):return None,'تم إلغاء معاينة اللوحة السابقة'
     proc=subprocess.Popen([str(console),'/i',str(src),'/s',str(scr),'/l','en-US'],cwd=str(workdir),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=flags)
     self.cad_preview_process=proc
     try:proc.wait(timeout=45)
     finally:
      if getattr(self,'cad_preview_process',None) is proc:self.cad_preview_process=None
+    if token is not None and token != getattr(self,'preview_token',0):return None,'تم إلغاء معاينة اللوحة السابقة'
     for candidate in sorted(workdir.glob('preview_*.pdf')):
      if candidate.stat().st_size<=400:continue
-     doc=fitz.open(str(candidate));pix=doc[0].get_pixmap(matrix=fitz.Matrix(1.8,1.8),alpha=False);im=Image.frombytes('RGB',[pix.width,pix.height],pix.samples);doc.close()
+     doc=fitz.open(str(candidate))
+     try:
+      rect=doc[0].rect
+      scale=min(1.8,2200.0/max(1.0,float(rect.width or 1.0)),2200.0/max(1.0,float(rect.height or 1.0)))
+      pix=doc[0].get_pixmap(matrix=fitz.Matrix(scale,scale),alpha=False)
+      im=Image.frombytes('RGB',[pix.width,pix.height],pix.samples);del pix
+     finally:doc.close()
      rendered=self._prepare_rendered_cad_image(im)
      if rendered:return rendered,'معاينة PDF هندسية عبر AutoCAD'
    return None,'لم ينتج AutoCAD صورة لهذه اللوحة'

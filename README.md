@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.44.4-00ff99?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-v0.44.5-00ff99?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-00c8ff?style=for-the-badge" alt="Platform">
   <img src="https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/UI-Arabic%20%2F%20English-ffb000?style=for-the-badge" alt="Arabic / English UI">
@@ -139,6 +139,14 @@
 - تحميل المكتبات الثقيلة (PDF/Excel/Word/CAD) عند الحاجة فقط، لبدء تشغيل أسرع.
 
 ---
+
+## الجديد في الإصدار v0.44.5
+
+- **إصلاح معاينة ملفات Word العربية**: كانت الحروف تظهر مفكّكة وبترتيب معكوس لأن مكتبة الرسم لا تشكّل العربية. أصبحت المعاينة تشكّل الحروف وتصلها وتعيد ترتيبها بصريًا (RTL) قبل الرسم، تمامًا مثل Word.
+- **إصلاح معاينات النصوص العربية**: معاينة PDF النصية وملفات TXT/MD/الكود والبطاقات والمصغرات والجداول تعرض الآن العربية متصلة وبمحاذاة يمين صحيحة. محتوى الملفات وأسماء المستخدمين لا يُترجم؛ الترجمة للتسميات فقط.
+- **إصلاح تحويل «من» إلى «of» عند إعادة التسمية**: كان محرّك الترجمة يعامل كلمة «من» داخل اسم الملف/المجلد كعبارة واجهة فيحوّلها إلى `of`. الآن حقول إعادة التسمية وإنشاء المجلد وأسماء المشاريع والمهام تحفظ ما يكتبه المستخدم حرفيًا دون أي ترجمة.
+- **عدّادات الواجهة**: ترجمة العدّادات الرقمية مثل `2 من 7` في ملاحظات PDF وشريط نتائج Excel تعمل كما كانت، مع حماية الأسماء التي تحتوي أرقامًا من التحويل الخاطئ.
+- **تحسين بطاقات المعاينة الإنجليزية**: تُترجم نصوص البطاقة قبل لفّها إلى أسطر، فتظهر كاملة بالإنجليزية بدل بقاءها عربية.
 
 ## الجديد في الإصدار v0.44.4
 
@@ -279,7 +287,7 @@ winget install -e --id NSIS.NSIS
 وبعدها من مجلد المشروع:
 
 ```bat
-makensis /DAPP_VERSION=0.44.4 build_installer.nsi
+makensis /DAPP_VERSION=0.44.5 build_installer.nsi
 ```
 
 الناتج:

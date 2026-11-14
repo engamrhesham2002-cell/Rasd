@@ -104,6 +104,21 @@ def _translate(text):
         pattern = prefix + re.escape(arabic) + suffix
         result = re.sub(pattern, lambda m, value=english: value, result)
 
+    # عدّادات مثل «صفحة PDF: 2 من 7» بعد ترجمة بادئتها.
+    result = re.sub(r'(\d[\d,]*)\s+(rows?|columns?)\s+من\s+(\d[\d,]*)',
+                    r'\1 \2 of \3', result)
+
+    def _counter(match):
+        # لا نلمس «3 من 5» إذا سبقها كلمة عربية أو لم تسبقها بادئة مترجمة،
+        # فقد تكون اسم ملف أو مجلد للمستخدم.
+        before = result[:match.start()].rstrip()
+        previous = before.rsplit(None, 1)[-1] if before else ''
+        if ARABIC_RE.search(previous) or not re.search(r'[A-Za-z]', before):
+            return match.group(0)
+        return f'{match.group(1)} of {match.group(2)}'
+
+    result = re.sub(r'(\d[\d,]*)\s+من\s+(\d[\d,]*)', _counter, result)
+
     # نُبقي أي بقايا عربية كما هي لأنها غالبًا أسماء مشاريع/ملفات أو بيانات مستخدم.
     # النصوص لم تعد كما هي إلا إذا لم تُطابق أي قاعدة، وفي هذه الحالة نعيد النص الأصلي.
     if result == cleaned:

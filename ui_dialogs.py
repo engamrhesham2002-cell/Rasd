@@ -103,11 +103,16 @@ def ask_string(parent, title, prompt, initialvalue='', show=None):
     win, body = _shell(parent, title)
     tk.Label(body, text=RLM + prompt, bg=BG_PANEL, fg=FG_MUTED, font=(TERM_FONT, 9),
              justify='right', anchor='e', wraplength=420).pack(fill='x', pady=(0, 6))
-    var = tk.StringVar(value=initialvalue or '')
+    # اسم الملف/المجلد الذي يكتبه المستخدم بيانات يجب حفظها حرفيًا،
+    # لذلك نُعلّم المتغير وحقل الإدخال بعدم الترجمة قبل وضع القيمة المبدئية.
+    var = tk.StringVar()
+    var._rasd_no_translate = True
     entry = tk.Entry(body, textvariable=var, bg=BG_VOID, fg=FG_PRIMARY,
                      insertbackground=ACCENT_MATRIX, relief='solid', borderwidth=1,
                      highlightthickness=1, highlightbackground=BORDER_DIM,
                      highlightcolor=ACCENT_MATRIX, font=(TERM_FONT, 11), justify='right')
+    entry._rasd_no_translate = True
+    var.set(initialvalue or '')
     if show: entry.configure(show=show)
     entry.pack(fill='x', ipady=6, pady=(0, 10))
     def ok():

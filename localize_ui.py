@@ -87,6 +87,11 @@ def _translate_value(value):
     return tr(value) if isinstance(value, str) else value
 
 
+def _keep_verbatim(widget):
+    """حقول الإدخال التي تحمل بيانات مستخدم (أسماء ملفات/مجلدات) لا تُترجم."""
+    return bool(getattr(widget, '_rasd_no_translate', False))
+
+
 # ---------------------------------------------------------------------------
 # عناصر Tk الكلاسيكية: text / cnf
 # ---------------------------------------------------------------------------
@@ -348,6 +353,8 @@ def _reverse_variable_value(variable, value):
     """يرجع النص العربي الأصلي بدل ترجمته عند قراءة قيمة متغير واجهة."""
     if not isinstance(value, str):
         return value
+    if _keep_verbatim(variable):
+        return value
     original = getattr(variable, '_rasd_i18n_var_original', None)
     if isinstance(original, str):
         try:
@@ -360,6 +367,8 @@ def _reverse_variable_value(variable, value):
 
 def _make_get_wrapper(original_get):
     def get(self):
+        if _keep_verbatim(self):
+            return original_get(self)
         return _reverse_variable_value(self, original_get(self))
     return get
 
@@ -379,6 +388,8 @@ def _patch_variables():
     def initialize(self, value):
         _register(self)
         if isinstance(value, str):
+            if _keep_verbatim(self):
+                return original_initialize(self, value)
             _remember(self, value)
             try:
                 self._rasd_i18n_var_original = value
@@ -390,6 +401,8 @@ def _patch_variables():
     def set(self, value):
         _register(self)
         if isinstance(value, str):
+            if _keep_verbatim(self):
+                return original_set(self, value)
             _remember(self, value)
             translated = _translate_value(value)
             try:
@@ -400,6 +413,8 @@ def _patch_variables():
         return original_set(self, value)
 
     def get(self):
+        if _keep_verbatim(self):
+            return original_get(self)
         return _reverse_variable_value(self, original_get(self))
 
     tk.Variable.initialize = initialize
@@ -415,7 +430,7 @@ def _patch_variables():
 
 def _reverse_from_variable(widget, value):
     """يعيد النص العربي الأصلي لعنصر إدخال مرتبط بـ StringVar مترجمة."""
-    if not isinstance(value, str):
+    if not isinstance(value, str) or _keep_verbatim(widget):
         return value
     try:
         name = widget.cget('textvariable')
@@ -424,6 +439,8 @@ def _reverse_from_variable(widget, value):
     if not name:
         return value
     variable = _VARIABLES.get(str(name))
+    if _keep_verbatim(variable):
+        return value
     original = getattr(variable, '_rasd_i18n_var_original', None)
     if isinstance(original, str) and value == _translate_value(original):
         return original
@@ -447,6 +464,8 @@ def _patch_entry():
         original_get = cls.get
 
         def insert(self, index, string, _orig=original_insert):
+            if _keep_verbatim(self):
+                return _orig(self, index, string)
             translated = _translate_value(string)
             if isinstance(string, str) and translated != string:
                 mapping = getattr(self, '_rasd_i18n_entry', None)
@@ -458,6 +477,8 @@ def _patch_entry():
 
         def get(self, _orig=original_get):
             value = _orig(self)
+            if _keep_verbatim(self):
+                return value
             value = getattr(self, '_rasd_i18n_entry', {}).get(value, value)
             return _reverse_from_variable(self, value)
 
@@ -474,6 +495,8 @@ def _patch_combobox():
 
     def _translate_values_for(widget, values):
         if not isinstance(values, (list, tuple)):
+            return values
+        if _keep_verbatim(widget):
             return values
         mapping = getattr(widget, '_rasd_i18n_combo', None)
         if mapping is None:
@@ -499,10 +522,14 @@ def _patch_combobox():
 
     def get(self):
         value = original_get(self)
+        if _keep_verbatim(self):
+            return value
         value = getattr(self, '_rasd_i18n_combo', {}).get(value, value)
         return _reverse_from_variable(self, value)
 
     def set(self, value):
+        if _keep_verbatim(self):
+            return original_set(self, value)
         return original_set(self, _translate_value(value))
 
     cls.__init__ = __init__

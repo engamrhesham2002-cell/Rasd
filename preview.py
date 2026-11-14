@@ -30,7 +30,7 @@ class PreviewMixin:
   event=getattr(self,'activity_rows',{}).get(str(sel[0])) if tree is getattr(self,'file_tree',None) else None
   if event:
    self.preview_token+=1;self.hide_excel_preview();self.preview_current_path=None;self.preview_page=0;self.preview_zoom=1.0
-   card=self.make_card('سجل النشاط',event['action'],f"التفاصيل: {event['details']}\nالوقت: {event['occurred_at']}",kind='activity')
+   card=self.make_card('سجل النشاط',event['action'],f"التفاصيل: {event['details']}\nالوقت: {event['occurred_at']}",kind='activity',translate_title=True)
    meta_lines=[
     f"العملية: {event['action']}",
     f"التفاصيل: {event['details']}",

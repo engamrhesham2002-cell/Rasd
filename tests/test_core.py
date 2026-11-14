@@ -155,6 +155,45 @@ class CoreTests(unittest.TestCase):
         self.assertGreaterEqual(595 * scale, 400)
         self.assertGreater(scale, 0.35)
 
+    def test_arabic_ui_counter_translation_keeps_user_names(self):
+        previous = i18n.get_language()
+        try:
+            i18n.set_language('en')
+            self.assertEqual(i18n.tr('صفحة PDF: 2 من 7'), 'PDF page: 2 of 7')
+            self.assertEqual(i18n.tr('صفحة PDF نصية: 1 من 3'), 'Text PDF page: 1 of 3')
+            self.assertEqual(i18n.tr('1,234 صف × 12 عمود من 5,000'),
+                             '1,234 rows × 12 columns of 5,000')
+            # بيانات المستخدم لا تُترجم ولو احتوت «من» أو أرقامًا حولها.
+            self.assertEqual(i18n.tr('تقرير 3 من 5'), 'تقرير 3 من 5')
+            self.assertEqual(i18n.tr('هندس احمد من ملفات مرسله'), 'هندس احمد من ملفات مرسله')
+        finally:
+            i18n.set_language(previous)
+
+    def test_verbatim_variable_skips_translation(self):
+        class FakeVariable:
+            _rasd_no_translate = True
+            _rasd_i18n_var_original = 'هندس احمد من ملفات مرسله'
+
+        self.assertEqual(localize_ui._reverse_variable_value(FakeVariable(), 'of'), 'of')
+
+        class TranslatedVariable:
+            _rasd_i18n_var_original = 'إعادة تسمية'
+
+        previous = i18n.get_language()
+        try:
+            i18n.set_language('en')
+            self.assertEqual(localize_ui._reverse_variable_value(TranslatedVariable(), 'Rename'),
+                             'إعادة تسمية')
+        finally:
+            i18n.set_language(previous)
+
+    def test_arabic_preview_text_is_shaped(self):
+        if preview_render._arabic_reshaper is None or preview_render._bidi_get_display is None:
+            self.skipTest('arabic-reshaper/python-bidi غير متاحين')
+        shown = preview_render.PreviewRenderMixin._display_text(None, 'عقد من الشركة')
+        self.assertNotEqual(shown, 'عقد من الشركة')
+        self.assertTrue(any('\ufe70' <= ch <= '\ufeff' for ch in shown))
+
     def test_nav_bar_side_not_mirrored_in_english(self):
         class FakeWidget:
             master = None

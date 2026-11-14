@@ -13,6 +13,18 @@ MAX_DWG_SCAN_BYTES = 32 * 1024 * 1024
 MAX_DWG_PLOT_BYTES = 80 * 1024 * 1024
 MAX_DXF_BYTES = 45 * 1024 * 1024
 
+# تشكيل الحروف العربية وإعادة ترتيب اتجاه النص قبل رسمه على صور المعاينة.
+# مكتبة PIL ترسم النص كما هو من اليسار لليمين، لذلك النص العربي يظهر مفككًا
+# ومقلوبًا بدون هاتين المكتبتين.
+try:
+    import arabic_reshaper as _arabic_reshaper
+    from bidi.algorithm import get_display as _bidi_get_display
+except Exception:
+    _arabic_reshaper = None
+    _bidi_get_display = None
+
+_ARABIC_TEXT_RE = re.compile(r'[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff\ufb50-\ufdff\ufe70-\ufeff]')
+
 def pdf_render_scale(width,height):
     """مقياس رسم آمن لصفحة PDF مع سقف صارم للبكسلات (بدون حد أدنى)."""
     width=max(1.0,float(width or 1.0))
@@ -111,14 +123,14 @@ class PreviewRenderMixin:
 
  def frame_image(self,im,caption):
   w,h=im.size;canvas=Image.new('RGB',(max(440,w+24),h+52),(13,18,25));d=ImageDraw.Draw(canvas)
-  d.rectangle((0,0,canvas.width-1,38),fill=(19,27,36),outline=(28,42,56));d.text((14,9),caption[:62],fill=(0,255,102),font=self._font(13,True))
+  d.rectangle((0,0,canvas.width-1,38),fill=(19,27,36),outline=(28,42,56));self._draw_text(d,(14,9),caption[:62],(0,255,102),self._font(13,True),right=canvas.width-14,translate=True)
   canvas.paste(im,((canvas.width-w)//2,44));d.rectangle((0,0,canvas.width-1,canvas.height-1),outline=(28,42,56),width=1);return canvas
 
- def make_card(self,title,subtitle,body,kind=None):
+ def make_card(self,title,subtitle,body,kind=None,translate_title=False):
   im=Image.new('RGB',(520,390),(7,10,14));d=ImageDraw.Draw(im)
   d.rectangle((10,10,510,380),fill=(13,18,25),outline=(28,42,56),width=2)
   d.rectangle((10,10,510,76),fill=(19,27,36),outline=(0,255,102),width=1)
-  d.text((24,26),str(subtitle)[:45],fill=(0,255,102),font=self._font(16,True))
+  self._draw_text(d,(24,26),str(subtitle)[:45],(0,255,102),self._font(16,True),right=496,translate=True)
   if kind=='folder':
    d.rectangle((195,108,325,192),fill=(19,27,36),outline=(0,229,255),width=2)
    d.rectangle((195,94,252,114),fill=(0,229,255),outline=(0,229,255),width=1)
@@ -130,20 +142,23 @@ class PreviewRenderMixin:
    y=210
   else:
    y=108
-  for line in textwrap.wrap(str(title),width=30)[:3]:
-   d.text((26,y),line,fill=(226,241,232),font=self._font(17,True));y+=32
+  # الاسم اسم مستخدم (لا يُترجم)، والجسم نص واجهة يُترجم قبل اللف حتى
+  # لا تتقسم العبارة العربية بين سطرين فيفشل مطابقتها في القاموس.
+  for line in textwrap.wrap(self._translate_ui(title) if translate_title else str(title),width=30)[:3]:
+   self._draw_text(d,(26,y),line,(226,241,232),self._font(17,True),right=494);y+=32
   y+=12
-  for line in textwrap.wrap(str(body),width=40)[:6]:
-   d.text((26,y),line,fill=(94,118,106),font=self._font(13));y+=25
+  for line in textwrap.wrap(self._translate_ui(body),width=40)[:6]:
+   self._draw_text(d,(26,y),line,(94,118,106),self._font(13),right=494);y+=25
   return im
 
  def _text_image(self,title,subtitle,lines):
   im=Image.new('RGB',(660,540),(13,18,25));d=ImageDraw.Draw(im)
-  d.rectangle((0,0,659,68),fill=(19,27,36),outline=(0,255,102),width=1);d.text((18,12),title[:48],fill=(0,255,102),font=self._font(15,True));d.text((18,40),subtitle[:62],fill=(0,229,255),font=self._font(11))
+  d.rectangle((0,0,659,68),fill=(19,27,36),outline=(0,255,102),width=1);self._draw_text(d,(18,12),title[:48],(0,255,102),self._font(15,True),right=642);self._draw_text(d,(18,40),subtitle[:62],(0,229,255),self._font(11),right=642,translate=True)
   y=84
   for line in lines[:20]:
-   for sub in textwrap.wrap(line,width=64)[:2] or ['']:
-    d.text((18,y),sub,fill=(226,241,232),font=self._font(12));y+=21
+   # محتوى الملف بيانات مستخدم: يُلف كما هو ثم يُشكّل عند الرسم فقط.
+   for sub in textwrap.wrap(str(line),width=64)[:2] or ['']:
+    self._draw_text(d,(18,y),sub,fill=(226,241,232),font=self._font(12),right=642);y+=21
     if y>512:break
    if y>512:break
   d.rectangle((0,0,659,539),outline=(28,42,56),width=1)
@@ -151,7 +166,7 @@ class PreviewRenderMixin:
 
  def _table_image(self,title,subtitle,rows):
   im=Image.new('RGB',(760,540),(13,18,25));d=ImageDraw.Draw(im)
-  d.rectangle((0,0,759,66),fill=(19,27,36),outline=(0,255,102),width=1);d.text((16,11),title[:48],fill=(0,255,102),font=self._font(15,True));d.text((16,39),subtitle[:72],fill=(0,229,255),font=self._font(11))
+  d.rectangle((0,0,759,66),fill=(19,27,36),outline=(0,255,102),width=1);self._draw_text(d,(16,11),title[:48],(0,255,102),self._font(15,True),right=744,translate=True);self._draw_text(d,(16,39),subtitle[:72],(0,229,255),self._font(11),right=744,translate=True)
   cols=max((len(r) for r in rows),default=1);cols=max(1,min(cols,7));cw=728//cols;rh=25;top=78
   for r_idx,row in enumerate(rows[:17]):
    for c_idx in range(cols):
@@ -159,7 +174,7 @@ class PreviewRenderMixin:
     fill=(19,27,36) if r_idx==0 else ((10,14,20) if r_idx%2 else (13,18,25))
     d.rectangle((x1,y1,x2,y2),fill=fill,outline=(28,42,56))
     val='' if c_idx>=len(row) or row[c_idx] is None else str(row[c_idx]).strip().replace('\n',' ')
-    d.text((x1+6,y1+4),val[:18],fill=(0,255,102) if r_idx==0 else (226,241,232),font=self._font(11,r_idx==0))
+    self._draw_text(d,(x1+6,y1+4),val[:18],(0,255,102) if r_idx==0 else (226,241,232),self._font(11,r_idx==0),right=x2-6)
   d.rectangle((0,0,759,539),outline=(28,42,56),width=1)
   return im
 
@@ -433,3 +448,34 @@ class PreviewRenderMixin:
     try:return ImageFont.truetype(str(candidate),size)
     except Exception:pass
   return ImageFont.load_default()
+
+ def _is_rtl_text(self,text):
+  """يحدد اتجاه الفقرة من أول حرف قوي (عربي = RTL، لاتيني = LTR)."""
+  for ch in str(text):
+   if _ARABIC_TEXT_RE.match(ch):return True
+   if ch.isalpha():return False
+  return False
+
+ def _translate_ui(self,text):
+  """يترجم تسمية واجهة قبل لفّها إلى أسطر (بدون تشكيل)."""
+  try:return tr(str(text))
+  except Exception:return str(text)
+
+ def _display_text(self,text,translate=False):
+  """يترجم تسميات الواجهة عند الحاجة ثم يشكّل العربية ويعيد ترتيبها بصريًا."""
+  value=str(text)
+  if translate:
+   try:value=tr(value)
+   except Exception:pass
+  if _ARABIC_TEXT_RE.search(value) and _arabic_reshaper is not None and _bidi_get_display is not None:
+   try:value=_bidi_get_display(_arabic_reshaper.reshape(value))
+   except Exception:pass
+  return value
+
+ def _draw_text(self,draw,xy,text,fill,font,right=None,translate=False):
+  """يرسم نصًا مع محاذاة يمين صحيحة للفقرات العربية."""
+  shown=self._display_text(text,translate=translate)
+  if right is not None and self._is_rtl_text(text):
+   draw.text((right,xy[1]),shown,fill=fill,font=font,anchor='ra')
+  else:
+   draw.text(xy,shown,fill=fill,font=font)

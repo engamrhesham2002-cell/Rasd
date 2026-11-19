@@ -70,6 +70,7 @@ class App(SecurityMixin,
   self.bind_all('<Map>', self._on_widget_map, add='+')
   self.after(10, self._apply_frameless_terminal_window)
   self.show_lock_screen() if self.password_enabled() else self.show_welcome()
+  self.after(15000, self._calendar_global_tick)
   self._poll_after_id=self.after(150,self.poll_queue)
   if UPDATE_FAILURE.is_file():
    try:self.after(900,lambda:self._show_update_failure(UPDATE_FAILURE.read_text(encoding='utf-8',errors='replace')))

@@ -7,6 +7,7 @@ import sys
 import tempfile
 import time
 import unittest
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -346,6 +347,197 @@ class CoreTests(unittest.TestCase):
         with storage.connect() as c:
             storage._run_once(c, 'test_run_once_key', 'insert into _test_run_once(x) values(1)')
             self.assertEqual(c.execute('select count(*) from _test_run_once').fetchone()[0], 1)
+
+
+class CalendarTests(unittest.TestCase):
+    def setUp(self):
+        import calendar_store
+        import calendar_core
+        self.store = calendar_store
+        self.core = calendar_core
+        calendar_store.ensure_calendar_schema()
+        self.created_calendars = []
+        self.created_events = []
+        self.created_tasks = []
+
+    def tearDown(self):
+        with storage.connect() as c:
+            for event_id in self.created_events:
+                c.execute('DELETE FROM calendar_events WHERE id=?', (event_id,))
+            for task_id in self.created_tasks:
+                c.execute('DELETE FROM tasks WHERE id=?', (task_id,))
+            for calendar_id in self.created_calendars:
+                c.execute('DELETE FROM calendars WHERE id=?', (calendar_id,))
+
+    def _calendar(self, name='تقويم اختبار'):
+        calendar_id = self.store.add_calendar(name + '-' + str(time.time()), '#3366CC')
+        self.created_calendars.append(calendar_id)
+        return calendar_id
+
+    def test_rrule_parse_build(self):
+        rule = self.core.parse_rrule('RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=SU,MO;COUNT=5')
+        self.assertEqual(rule['freq'], 'WEEKLY')
+        self.assertEqual(rule['interval'], 2)
+        self.assertEqual(rule['byday'], ['SU', 'MO'])
+        self.assertEqual(rule['count'], 5)
+        built = self.core.build_rrule('WEEKLY', 2, ['SU'])
+        self.assertIn('FREQ=WEEKLY', built)
+        self.assertIn('INTERVAL=2', built)
+        self.assertIn('BYDAY=SU', built)
+
+    def test_weekly_byday_expands_inside_range(self):
+        from datetime import datetime, timedelta
+        base = datetime(2026, 3, 1, 9, 0)  # الأحد
+        rule = self.core.build_rrule('WEEKLY', 1, ['SU', 'WE'])
+        values = self.core.expand_occurrences(
+            base, timedelta(hours=1), rule,
+            datetime(2026, 3, 1), datetime(2026, 3, 15))
+        dates = [item['occurrence_date'] for item in values]
+        self.assertEqual(dates, [date(2026, 3, 1), date(2026, 3, 4),
+                                 date(2026, 3, 8), date(2026, 3, 11)])
+
+    def test_count_and_until_limit_series(self):
+        from datetime import datetime, timedelta
+        base = datetime(2026, 3, 1, 9, 0)
+        values = self.core.expand_occurrences(
+            base, timedelta(hours=1), 'FREQ=DAILY;COUNT=3',
+            datetime(2026, 3, 1), datetime(2026, 3, 10))
+        self.assertEqual(len(values), 3)
+        values = self.core.expand_occurrences(
+            base, timedelta(hours=1), 'FREQ=DAILY;UNTIL=20260304',
+            datetime(2026, 3, 1), datetime(2026, 3, 10))
+        self.assertEqual(len(values), 3)
+
+    def test_cancelled_occurrence_is_skipped(self):
+        from datetime import datetime, timedelta
+        base = datetime(2026, 3, 1, 9, 0)
+        overrides = {'2026-03-02': {'cancelled': True}}
+        values = self.core.expand_occurrences(
+            base, timedelta(hours=1), 'FREQ=DAILY', datetime(2026, 3, 1),
+            datetime(2026, 3, 4), None, overrides)
+        self.assertEqual([item['occurrence_date'] for item in values],
+                         [date(2026, 3, 1), date(2026, 3, 3)])
+
+    def test_override_moves_single_occurrence(self):
+        from datetime import datetime, timedelta
+        base = datetime(2026, 3, 1, 9, 0)
+        overrides = {'2026-03-02': {'date': '2026-03-05', 'start': '14:00', 'end': '15:30'}}
+        values = self.core.expand_occurrences(
+            base, timedelta(hours=1), 'FREQ=DAILY', datetime(2026, 3, 1),
+            datetime(2026, 3, 8), None, overrides)
+        moved = [item for item in values if item.get('rule_date') == date(2026, 3, 2)][0]
+        self.assertEqual(moved['occurrence_date'], date(2026, 3, 5))
+        self.assertEqual(moved['start'].strftime('%H:%M'), '14:00')
+        self.assertEqual(moved['end'].strftime('%H:%M'), '15:30')
+
+    def test_utc_roundtrip_keeps_local_time(self):
+        from datetime import datetime
+        local = datetime(2026, 7, 1, 13, 45)
+        stored = self.core.local_to_utc_iso(local)
+        self.assertTrue(stored.endswith('+00:00'))
+        self.assertEqual(self.core.utc_iso_to_local(stored), local)
+
+    def test_layout_overlaps_assigns_parallel_lanes(self):
+        events = [
+            {'start_min': 60, 'end_min': 120},
+            {'start_min': 90, 'end_min': 150},
+            {'start_min': 200, 'end_min': 230},
+        ]
+        max_lanes = self.core.layout_overlaps(events)
+        self.assertEqual(max_lanes, 2)
+        overlapping = [item for item in events if item['start_min'] in (60, 90)]
+        self.assertEqual(sorted(item['lane'] for item in overlapping), [0, 1])
+        self.assertEqual(overlapping[0]['lanes'], 2)
+
+    def test_store_event_crud_and_visibility(self):
+        from datetime import datetime
+        calendar_id = self._calendar()
+        event_id = self.store.create_event(
+            calendar_id, 'اجتماع اختبار', datetime(2026, 3, 10, 14, 0),
+            datetime(2026, 3, 10, 15, 0), location='غرفة 1', reminder_minutes=10)
+        self.created_events.append(event_id)
+        items = self.store.load_items(date(2026, 3, 10), date(2026, 3, 10))
+        matched = [item for item in items if item.get('event_id') == event_id]
+        self.assertEqual(len(matched), 1)
+        self.assertEqual(matched[0]['start_min'], 14 * 60)
+        self.assertEqual(matched[0]['end_min'], 15 * 60)
+        self.store.set_calendar_visible(calendar_id, False)
+        items = self.store.load_items(date(2026, 3, 10), date(2026, 3, 10))
+        self.assertFalse([item for item in items if item.get('event_id') == event_id])
+        self.store.set_calendar_visible(calendar_id, True)
+
+    def test_store_recurring_event_override_and_cancel(self):
+        from datetime import datetime
+        calendar_id = self._calendar()
+        event_id = self.store.create_event(
+            calendar_id, 'متكرر اختبار', datetime(2026, 3, 1, 9, 0),
+            datetime(2026, 3, 1, 10, 0), rrule='FREQ=DAILY')
+        self.created_events.append(event_id)
+        self.store.cancel_event_occurrence(event_id, date(2026, 3, 2))
+        overrides = self.core.parse_json_dict(self.store.get_event(event_id)['overrides'])
+        self.assertTrue(overrides['2026-03-02']['cancelled'])
+        items = self.store.load_items(date(2026, 3, 1), date(2026, 3, 3))
+        dates = [item['occurrence_date'] for item in items if item.get('event_id') == event_id]
+        self.assertEqual(dates, [date(2026, 3, 1), date(2026, 3, 3)])
+
+    def test_load_items_merges_tasks_and_events(self):
+        from datetime import datetime
+        project = 'مشروع-تقويم-اختبار'
+        with storage.connect() as c:
+            cursor = c.execute(
+                'INSERT INTO tasks(title,project,due_date,start_time,end_time,priority,created_at,updated_at) '
+                'VALUES(?,?,?,?,?,?,?,?)',
+                ('مهمة تقويم', project, '2026-04-05', '10:00', '11:00', 2,
+                 '2026-04-01 00:00:00', '2026-04-01 00:00:00'))
+            task_id = cursor.lastrowid
+        self.created_tasks.append(task_id)
+        calendar_id = self._calendar()
+        event_id = self.store.create_event(
+            calendar_id, 'موعد تقويم', datetime(2026, 4, 5, 12, 0),
+            datetime(2026, 4, 5, 13, 0))
+        self.created_events.append(event_id)
+        items = self.store.load_items(date(2026, 4, 5), date(2026, 4, 5), project)
+        sources = {(item['source'], item.get('task_id'), item.get('event_id')) for item in items}
+        self.assertIn(('task', task_id, None), sources)
+        self.assertIn(('event', None, event_id), sources)
+
+    def test_calendar_ui_translations(self):
+        previous = i18n.get_language()
+        try:
+            i18n.set_language('en')
+            self.assertEqual(i18n.tr('تقويماتي'), 'My calendars')
+            self.assertEqual(i18n.tr('كل اليوم'), 'All day')
+            self.assertEqual(i18n.tr('هذا الموعد فقط'), 'This event only')
+            self.assertEqual(i18n.tr('الأحد 05 مارس 2026'), 'Sunday 05 March 2026')
+        finally:
+            i18n.set_language(previous)
+
+    def test_all_day_event_on_range_start_is_visible(self):
+        from datetime import datetime
+        calendar_id = self._calendar()
+        day = date(2026, 6, 1)
+        event_id = self.store.create_event(calendar_id, 'عيد ميلاد', datetime.combine(day, datetime.min.time()),
+                                           is_all_day=True)
+        self.created_events.append(event_id)
+        items = self.store.load_items(day, day)
+        matched = [item for item in items if item.get('event_id') == event_id]
+        self.assertEqual(len(matched), 1)
+        self.assertTrue(matched[0]['all_day'])
+
+    def test_move_item_creates_override_for_recurring_event(self):
+        from datetime import datetime
+        calendar_id = self._calendar()
+        event_id = self.store.create_event(
+            calendar_id, 'نقل اختبار', datetime(2026, 5, 4, 9, 0),
+            datetime(2026, 5, 4, 10, 0), rrule='FREQ=WEEKLY')
+        self.created_events.append(event_id)
+        items = self.store.load_items(date(2026, 5, 11), date(2026, 5, 11))
+        occurrence = [item for item in items if item.get('event_id') == event_id][0]
+        self.store.move_item(occurrence, date(2026, 5, 12), 15 * 60, 16 * 60)
+        overrides = self.core.parse_json_dict(self.store.get_event(event_id)['overrides'])
+        self.assertIn('2026-05-11', overrides)
+        self.assertEqual(overrides['2026-05-11']['date'], '2026-05-12')
+        self.assertEqual(overrides['2026-05-11']['start'], '15:00')
 
 
 if __name__ == '__main__':

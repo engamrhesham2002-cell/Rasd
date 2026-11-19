@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.44.5-00ff99?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-v0.45.0-00ff99?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-00c8ff?style=for-the-badge" alt="Platform">
   <img src="https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/UI-Arabic%20%2F%20English-ffb000?style=for-the-badge" alt="Arabic / English UI">
@@ -139,6 +139,17 @@
 - تحميل المكتبات الثقيلة (PDF/Excel/Word/CAD) عند الحاجة فقط، لبدء تشغيل أسرع.
 
 ---
+
+## الجديد في الإصدار v0.45.0
+
+- **تقويم متكامل على نمط Google Calendar**: عروض الشهر والأسبوع واليوم والأجندة، مع شريط علوي فيه «اليوم» وأسهم تنقل واسم الشهر/السنة ومبدّل عرض.
+- **شريط جانبي**: زر «＋ إنشاء»، تقويم مصغّر للتنقل السريع، وقائمة «تقويماتي» بألوان وعلامات صح لإظهار/إخفاء كل تقويم.
+- **تفاعل سريع**: النقر على مساحة فارغة يفتح إضافة موعد بوقت النقر، والسحب والإفلات ينقل الموعد، وسحب الحافة السفلية يغيّر المدة.
+- **تكرار ذكي**: سجل واحد لكل سلسلة مع قاعدة `RRULE` (`FREQ/INTERVAL/BYDAY/COUNT/UNTIL`)، واستثناءات لتعديل/حذف موعد واحد فقط.
+- **مواعيد متداخلة**: تقسيم عمود الوقت تلقائيًا لعرض المواعيد المتوازية جنبًا إلى جنب.
+- **توقيت عالمي**: تخزين UTC والتحويل لتوقيت الجهاز مع مراعاة التوقيت الصيفي.
+- **تنبيهات خلفية**: مراقب كل دقيقة يرسل إشعارًا قبل الموعد (10 دقائق افتراضيًا أو المدة المختارة).
+- **ربط المهام بالتقويم**: تظهر المهام بلون تقويم «المهام» مع زر إتمام، وتُدمج مع المواعيد في كل العروض.
 
 ## الجديد في الإصدار v0.44.5
 
@@ -287,7 +298,7 @@ winget install -e --id NSIS.NSIS
 وبعدها من مجلد المشروع:
 
 ```bat
-makensis /DAPP_VERSION=0.44.5 build_installer.nsi
+makensis /DAPP_VERSION=0.45.0 build_installer.nsi
 ```
 
 الناتج:
@@ -400,3 +411,4 @@ py -3.11 -m unittest discover -s tests -q
 <p align="center">
   © 2026 عمرو هشام. جميع الحقوق محفوظة.
 </p>
+

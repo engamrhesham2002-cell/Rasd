@@ -303,6 +303,8 @@ class TasksUtilsMixin:
       self._task_show_toast("[ALERT // 15 MIN] مهمة تقترب", t['title'])
       self.notified_tasks.add(t['id'])
   except Exception: pass
+  try: self._calendar_reminder_tick()
+  except Exception: pass
   if getattr(self,'task_calendar_active',False):
    if getattr(self,'task_calendar_drag_state',None) is None and self._task_rollover_elapsed():self._task_calendar_draw(preserve_scroll=True)
    self.after(30000,lambda:self._task_rollover_tick(token))

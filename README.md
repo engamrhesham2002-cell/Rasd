@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.45.0-00ff99?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-v0.45.1-00ff99?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-00c8ff?style=for-the-badge" alt="Platform">
   <img src="https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/UI-Arabic%20%2F%20English-ffb000?style=for-the-badge" alt="Arabic / English UI">
@@ -140,7 +140,12 @@
 
 ---
 
-## الجديد في الإصدار v0.45.0
+## الجديد في الإصدار v0.45.1
+
+- **إصلاحات تقويم v0.45**: النقر على موعد لم يعد يفتح نافذتين معًا، والمواعيد المنتهية عند منتصف الليل تحتفظ بمدتها، ومواعيد «كل اليوم» أصبحت قابلة للسحب بين الأيام، وزر `+N` يفتح عرض اليوم.
+- **دقة التكرار والتنبيهات**: قاعدة `UNTIL` تشمل اليوم نفسه (RFC 5545)، ووضع «هذا الموعد فقط» يعطّل خيارات السلسلة، والتحديث الدوري لا يعيد الرسم أثناء السحب.
+
+## مزايا الإصدار v0.45.0
 
 - **تقويم متكامل على نمط Google Calendar**: عروض الشهر والأسبوع واليوم والأجندة، مع شريط علوي فيه «اليوم» وأسهم تنقل واسم الشهر/السنة ومبدّل عرض.
 - **شريط جانبي**: زر «＋ إنشاء»، تقويم مصغّر للتنقل السريع، وقائمة «تقويماتي» بألوان وعلامات صح لإظهار/إخفاء كل تقويم.
@@ -298,7 +303,7 @@ winget install -e --id NSIS.NSIS
 وبعدها من مجلد المشروع:
 
 ```bat
-makensis /DAPP_VERSION=0.45.0 build_installer.nsi
+makensis /DAPP_VERSION=0.45.1 build_installer.nsi
 ```
 
 الناتج:

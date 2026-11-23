@@ -281,7 +281,10 @@ def _task_item(row, calendar, occurrence=None, virtual=False):
             start_minutes = end_minutes = 0
         else:
             start_minutes = start.hour * 60 + start.minute
-            end_minutes = max(start_minutes + 15, end.hour * 60 + end.minute)
+            end_minutes = end.hour * 60 + end.minute
+            if end.date() > start.date():
+                end_minutes += 24 * 60
+            end_minutes = max(start_minutes + 15, min(24 * 60, end_minutes))
     completed = bool(row['completed_at'])
     return {
         'source': 'task',
@@ -324,7 +327,10 @@ def _event_item(row, calendar, occurrence, base_date):
         start_minutes = end_minutes = 0
     else:
         start_minutes = start.hour * 60 + start.minute
-        end_minutes = max(start_minutes + 15, end.hour * 60 + end.minute)
+        end_minutes = end.hour * 60 + end.minute
+        if end.date() > start.date():
+            end_minutes += 24 * 60
+        end_minutes = max(start_minutes + 15, min(24 * 60, end_minutes))
     return {
         'source': 'event',
         'id': f'event:{row["id"]}',
@@ -349,7 +355,9 @@ def _event_item(row, calendar, occurrence, base_date):
         'recurrence': core.rrule_to_preset(row['rrule']) if row['rrule'] else '',
         'occurrence_date': occurrence['occurrence_date'],
         'rule_date': occurrence.get('rule_date') or occurrence['occurrence_date'],
-        'reminder_minutes': int(row['reminder_minutes'] if row['reminder_minutes'] is not None else 10),
+        'reminder_minutes': int(override.get(
+            'reminder_minutes',
+            row['reminder_minutes'] if row['reminder_minutes'] is not None else 10)),
         'override': override,
         'virtual': occurrence['occurrence_date'] != base_date or bool(override),
         'raw': row,
@@ -537,7 +545,8 @@ def reminder_candidates(now=None):
     """يعيد المواعيد التي حان وقت تذكيرها الآن (بدون تكرار الإرسال)."""
     now = now or datetime.now()
     today = now.date()
-    items = load_items(today, today)
+    # نقرأ يومين: التذكير «قبل يوم» أو موعد بعد منتصف الليل بقليل يحتاج الغد أيضًا.
+    items = load_items(today, today + timedelta(days=1))
     ready = []
     for item in items:
         if item.get('completed'):

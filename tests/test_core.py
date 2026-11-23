@@ -12,10 +12,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-TEST_HOME = tempfile.mkdtemp(prefix='rasd_test_')
-os.environ['LOCALAPPDATA'] = TEST_HOME
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _testhome import HOME as TEST_HOME  # noqa: E402  (يضبط LOCALAPPDATA قبل storage)
 
-import storage  # noqa: E402  (يجب ضبط LOCALAPPDATA قبله)
+import storage  # noqa: E402
 import sync_ops  # noqa: E402
 import tasks_utils  # noqa: E402
 import update_utils  # noqa: E402
@@ -26,8 +26,9 @@ import preview_render  # noqa: E402
 import file_ops  # noqa: E402
 
 
+# التنظيف يتم عبر tests/_testhome.py بعد انتهاء كل ملفات الاختبار.
 def tearDownModule():
-    shutil.rmtree(TEST_HOME, ignore_errors=True)
+    pass
 
 
 class CoreTests(unittest.TestCase):
@@ -406,7 +407,8 @@ class CalendarTests(unittest.TestCase):
         values = self.core.expand_occurrences(
             base, timedelta(hours=1), 'FREQ=DAILY;UNTIL=20260304',
             datetime(2026, 3, 1), datetime(2026, 3, 10))
-        self.assertEqual(len(values), 3)
+        # UNTIL بتاريخ فقط يشمل اليوم نفسه (حتى نهاية 4 مارس).
+        self.assertEqual(len(values), 4)
 
     def test_cancelled_occurrence_is_skipped(self):
         from datetime import datetime, timedelta

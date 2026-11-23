@@ -95,6 +95,9 @@ class CalendarDialogMixin:
         base_date = initial_date or date.today()
         start_text = initial_start or '09:00'
         end_text = initial_end or '10:00'
+        if str(end_text).startswith('24:00'):
+            # منتصف الليل يُعرض 00:00 ويُفسَّر عند الحفظ كنهاية اليوم التالي.
+            end_text = '00:00'
 
         if event:
             base_date, base_end = store.event_local_times(event)
@@ -280,6 +283,14 @@ class CalendarDialogMixin:
                                        state='readonly', width=16, justify='right',
                                        style='Office.TCombobox')
             scope_combo.pack(side='right', padx=4)
+
+            def sync_scope(*_args):
+                single = scope_var.get() == 'هذا الموعد فقط'
+                state = 'disabled' if single else 'readonly'
+                repeat_combo.configure(state=state)
+                calendar_combo.configure(state=state)
+            scope_var.trace_add('write', sync_scope)
+            sync_scope()
         scope_row_index = 10 if scope_combo else 9
 
         # الأزرار
@@ -303,8 +314,12 @@ class CalendarDialogMixin:
             if not all_day:
                 if start_minutes is None:
                     return messagebox.showwarning('الموعد', 'حدد وقت البداية.', parent=win)
-                if end_minutes is None or end_minutes <= start_minutes:
-                    end_minutes = min(24 * 60, start_minutes + 60)
+                if end_minutes is None:
+                    end_minutes = start_minutes + 60
+                elif end_minutes <= start_minutes:
+                    # نهاية بعد منتصف الليل: 22:00 -> 02:00 تعني 26 ساعة من بداية اليوم.
+                    end_minutes += 24 * 60
+                end_minutes = max(start_minutes + 15, min(48 * 60, end_minutes))
             calendar_row = calendar_lookup.get(calendar_var.get()) or current_calendar
             repeat_text = repeat_var.get()
             rrule_value = None if repeat_text == NO_REPEAT else core.rrule_from_preset(repeat_text, chosen_date)
@@ -318,7 +333,8 @@ class CalendarDialogMixin:
                     overrides = core.parse_json_dict(event.get('overrides'))
                     key = (occurrence.get('rule_date') or occurrence['occurrence_date']).isoformat()
                     override = {'title': title_value, 'description': description_value,
-                                'location': location_var.get().strip(), 'date': chosen_date.isoformat()}
+                                'location': location_var.get().strip(), 'date': chosen_date.isoformat(),
+                                'reminder_minutes': reminder_minutes}
                     if color_value:
                         override['color'] = color_value
                     if all_day:

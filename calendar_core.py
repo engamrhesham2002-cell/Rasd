@@ -127,6 +127,9 @@ def parse_rrule(text):
             for fmt in ('%Y%m%dT%H%M%S', '%Y%m%d', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d'):
                 try:
                     parsed = datetime.strptime(value, fmt)
+                    # تاريخ فقط يعني أن اليوم نفسه مشمول حتى نهايته.
+                    if fmt in ('%Y%m%d', '%Y-%m-%d'):
+                        parsed = parsed.replace(hour=23, minute=59, second=59)
                     break
                 except ValueError:
                     continue
@@ -148,7 +151,12 @@ def build_rrule(freq=None, interval=1, byday=None, count=None, until=None):
     if count:
         parts.append(f'COUNT={int(count)}')
     if until:
-        parts.append('UNTIL=' + until.strftime('%Y%m%d') if isinstance(until, (date, datetime)) else f'UNTIL={until}')
+        if isinstance(until, datetime) and (until.hour or until.minute or until.second):
+            parts.append('UNTIL=' + until.strftime('%Y%m%dT%H%M%S'))
+        elif isinstance(until, (date, datetime)):
+            parts.append('UNTIL=' + until.strftime('%Y%m%d'))
+        else:
+            parts.append(f'UNTIL={until}')
     return ';'.join(parts)
 
 

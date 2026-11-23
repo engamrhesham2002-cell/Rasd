@@ -470,7 +470,15 @@ class TasksCalendarMixin(CalendarDialogMixin):
                 extra = tk.Label(body, text=RLM + f'+{len(day_items) - max_chips}',
                                  bg=bg, fg=FG_MUTED, font=(TERM_FONT, 7), anchor='e')
                 extra.pack(fill='x', padx=2)
-                extra.bind('<Button-1>', lambda _e, target=current: self._task_calendar_goto(target))
+                extra.bind('<Button-1>', lambda _e, target=current: self._calendar_open_day(target))
+
+    def _calendar_open_day(self, target):
+        """ينتقل من خلية الشهر إلى عرض اليوم لعرض كل مواعيده."""
+        self.task_calendar_date = target
+        self.task_calendar_mini_date = target.replace(day=1)
+        self.task_calendar_view = 'day'
+        self._task_calendar_draw(preserve_scroll=False)
+        return 'break'
 
     def _calendar_month_chip(self, parent, item, cell_bg):
         color, chip_bg, text_color = self._calendar_item_colors(item)
@@ -577,6 +585,11 @@ class TasksCalendarMixin(CalendarDialogMixin):
             y = body.canvasy(event.y)
             if x < gutter:
                 return
+            # النقر فوق موعد مرسوم يخصّ معالج العنصر (فتح/سحب)، وليس إنشاء موعد جديد.
+            # نتحقق من tags العناصر عند النقطة لأن bind على الـCanvas يعمل قبل tag_bind.
+            for item_id in body.find_overlapping(x, y, x, y):
+                if any(t.startswith(('cal', 'allday')) for t in body.gettags(item_id)):
+                    return
             visual = int((x - gutter) // col_width)
             if not 0 <= visual < len(visual_span):
                 return
@@ -630,12 +643,17 @@ class TasksCalendarMixin(CalendarDialogMixin):
                     all_day.create_text(x0 + col_width - 6, y0 + 7, text=RLM + str(item['title']),
                                         anchor='e', fill=text_color, font=(TERM_FONT, 7),
                                         width=col_width - 14, tags=(tag,))
-                    handler = lambda event, current=item: self._calendar_item_quick_open(current)
-                    all_day.tag_bind(tag, '<Button-1>', handler)
+                    all_day.tag_bind(tag, '<ButtonPress-1>',
+                                     lambda event, current=item, t=tag: self._calendar_allday_press(event, current, t))
+                    all_day.tag_bind(tag, '<B1-Motion>', self._calendar_allday_motion)
+                    all_day.tag_bind(tag, '<ButtonRelease-1>', self._calendar_allday_release)
                 if len(day_all_day) > 2:
+                    more_tag = f'alldaymore{visual}'
                     all_day.create_text(gutter + visual * col_width + col_width / 2,
                                         all_day_h - 6, text=f'+{len(day_all_day) - 2}',
-                                        fill=FG_MUTED, font=(TERM_FONT, 7))
+                                        fill=FG_MUTED, font=(TERM_FONT, 7), tags=(more_tag,))
+                    all_day.tag_bind(more_tag, '<Button-1>',
+                                     lambda event, target=day: self._calendar_open_day(target))
 
         # --- جسم الخط الزمني ---
         body.delete('all')
@@ -860,6 +878,70 @@ class TasksCalendarMixin(CalendarDialogMixin):
         self._task_calendar_draw(preserve_scroll=True)
         return 'break'
 
+    def _calendar_allday_press(self, event, item, tag):
+        self.task_calendar_allday_state = {
+            'item': item,
+            'canvas': event.widget,
+            'tag': tag,
+            'press_x': event.x_root,
+            'press_y': event.y_root,
+            'moved': False,
+            'day': item['occurrence_date'],
+            'ghost': None,
+        }
+        return 'break'
+
+    def _calendar_allday_motion(self, event):
+        state = getattr(self, 'task_calendar_allday_state', None)
+        if not state:
+            return 'break'
+        if not state['moved'] and abs(event.x_root - state['press_x']) + abs(event.y_root - state['press_y']) < 5:
+            return 'break'
+        geometry = getattr(self, '_cal_geometry', None)
+        visual_span = getattr(self, '_cal_visual_span', [])
+        if not geometry or not visual_span:
+            return 'break'
+        state['moved'] = True
+        canvas = state['canvas']
+        x = canvas.canvasx(event.x)
+        visual = int((x - geometry['gutter']) // geometry['col_width'])
+        visual = max(0, min(len(visual_span) - 1, visual))
+        state['day'] = visual_span[visual]
+        if state['ghost'] is not None:
+            try:
+                canvas.delete(state['ghost'])
+            except tk.TclError:
+                pass
+        x0 = geometry['gutter'] + visual * geometry['col_width']
+        try:
+            state['ghost'] = canvas.create_rectangle(
+                x0 + 3, 3, x0 + geometry['col_width'] - 3, geometry['all_day_h'] - 3,
+                outline=ACCENT_CYAN, width=2, dash=(4, 3))
+        except tk.TclError:
+            state['ghost'] = None
+        return 'break'
+
+    def _calendar_allday_release(self, event):
+        state = getattr(self, 'task_calendar_allday_state', None)
+        if not state:
+            return 'break'
+        self.task_calendar_allday_state = None
+        canvas = state['canvas']
+        if state.get('ghost') is not None:
+            try:
+                canvas.delete(state['ghost'])
+            except tk.TclError:
+                pass
+        if not state['moved']:
+            self._calendar_open_item(state['item'])
+            return 'break'
+        try:
+            store.move_item(state['item'], state['day'])
+        except (ValueError, sqlite3.Error) as exc:
+            messagebox.showerror('تعديل الموعد', str(exc), parent=self)
+        self._task_calendar_draw(preserve_scroll=True)
+        return 'break'
+
     def _calendar_item_quick_open(self, item):
         self._calendar_open_item(item)
         return 'break'
@@ -984,7 +1066,14 @@ class TasksCalendarMixin(CalendarDialogMixin):
         except Exception:
             pass
         try:
-            if getattr(self, 'task_calendar_active', False) and getattr(self, 'task_calendar_drag_state', None) is None:
+            active = getattr(self, 'task_calendar_active', False)
+            view = getattr(self, 'task_calendar_view', 'month')
+            if (active and view in ('week', 'day')
+                    and getattr(self, 'task_calendar_drag_state', None) is None
+                    and getattr(self, 'task_calendar_allday_state', None) is None
+                    and self.grab_current() is None):
+                # نعيد رسم الخط الزمني كل دقيقة لتحديث مؤشر الوقت الحالي فقط،
+                # ولا نلمس عرضي الشهر/الأجندة حفاظًا على موضع التمرير.
                 self._task_calendar_draw(preserve_scroll=True)
         except Exception:
             pass
